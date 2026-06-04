@@ -25,6 +25,7 @@ type AuthContextType = {
   login: (email: string, password: string) => Promise<AppUser>;
   loginWithGoogle: () => Promise<AppUser>;
   register: (name: string, email: string, password: string, shopName: string) => Promise<AppUser>;
+  refreshSession: () => Promise<AppUser | null>;
   logout: () => Promise<void>;
 };
 
@@ -56,15 +57,6 @@ function requireSupabase() {
 
 function isInvalidRefreshToken(error: unknown) {
   return error instanceof Error && error.message.toLowerCase().includes("refresh token");
-}
-
-async function clearLocalAuthSession() {
-  try {
-    await getSupabaseClient().auth.signOut({ scope: "local" });
-  } catch {
-    // The stored session can already be broken. In that case, keep the app usable.
-  }
-  await clearStoredSupabaseSession();
 }
 
 async function clearStoredSupabaseSession() {
@@ -133,6 +125,9 @@ function warnAuthLogoutError(error: unknown) {
 
 function getFriendlyAuthErrorMessage(message: string) {
   const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("network request failed") || lowerMessage.includes("failed to fetch")) {
+    return "Connexion Internet impossible. Verifiez le Wi-Fi ou les donnees mobiles, puis reessayez. Si le probleme persiste sur cet appareil uniquement, ouvrez Supabase dans son navigateur pour verifier son acces HTTPS.";
+  }
   if (lowerMessage.includes("email rate limit")) {
     return "Trop de tentatives de creation de compte. Patientez quelques minutes, puis reessayez ou connectez-vous si le compte existe deja.";
   }
@@ -197,23 +192,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data.session) {
       setUser(null);
       setSessionKey(key => key + 1);
-      return;
+      return null;
     }
 
     const { data: userData, error } = await supabase.auth.getUser();
     if (error || !userData.user) {
       if (error && isInvalidRefreshToken(error)) {
         await expireCurrentSession();
-        return;
+        return null;
       }
       await clearStoredSupabaseSession();
       setUser(null);
       setSessionKey(key => key + 1);
-      return;
+      return null;
     }
 
-    setUser(mapUser(userData.user));
+    const nextUser = mapUser(userData.user);
+    setUser(nextUser);
     setSessionKey(key => key + 1);
+    return nextUser;
   }
 
   useEffect(() => {
@@ -383,31 +380,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionKey(key => key + 1);
 
     const supabase = requireSupabase();
+    let remoteSignOut: Promise<unknown> | null = null;
     try {
       supabase.auth.stopAutoRefresh();
-      const { error } = await supabase.auth.signOut();
-      if (error) warnAuthLogoutError(error);
+      remoteSignOut = supabase.auth.signOut().then(({ error }) => {
+        if (error) warnAuthLogoutError(error);
+      });
     } catch (error) {
       warnAuthLogoutError(error);
     }
+
     await clearStoredSupabaseSession();
     try {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        await supabase.auth.signOut({ scope: "local" });
-        await clearStoredSupabaseSession();
-      }
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
-      await clearStoredSupabaseSession();
+      // The in-memory session can already be cleared. Local storage cleanup below is enough.
     } finally {
+      await clearStoredSupabaseSession();
       setUser(null);
       setSessionKey(key => key + 1);
       isLoggingOutRef.current = false;
     }
+
+    void remoteSignOut?.catch(warnAuthLogoutError);
   }
 
   const value = useMemo(
-    () => ({ user, isConfigured, isLoading, sessionKey, login, loginWithGoogle, register, logout }),
+    () => ({ user, isConfigured, isLoading, sessionKey, login, loginWithGoogle, register, refreshSession: restoreCurrentSession, logout }),
     [isConfigured, isLoading, sessionKey, user],
   );
 

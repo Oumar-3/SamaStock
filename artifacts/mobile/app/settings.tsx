@@ -145,7 +145,7 @@ export default function SettingsScreen() {
   async function performLogout() {
     try {
       await logout();
-      router.replace("/(auth)/login");
+      router.replace("/intro");
     } catch (err) {
       Alert.alert("Erreur", err instanceof Error ? err.message : "Impossible de se deconnecter.");
     }

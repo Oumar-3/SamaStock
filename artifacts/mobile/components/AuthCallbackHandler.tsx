@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
 import {
   completeOAuthSessionFromParamsAsync,
   completeOAuthSessionFromUrlAsync,
@@ -18,6 +19,7 @@ function normalizeParams(params: Record<string, string | string[]>) {
 export function AuthCallbackHandler() {
   const colors = useColors();
   const router = useRouter();
+  const { refreshSession } = useAuth();
   const latestUrl = Linking.useURL();
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const handledRef = useRef(false);
@@ -31,12 +33,16 @@ export function AuthCallbackHandler() {
       const initialUrl = latestUrl ?? await Linking.getInitialURL();
       if (initialUrl) {
         await completeOAuthSessionFromUrlAsync(initialUrl);
-        return;
+      } else {
+        const normalizedParams = normalizeParams(params);
+        if (normalizedParams.code || normalizedParams.access_token || normalizedParams.error_code || normalizedParams.token_hash) {
+          await completeOAuthSessionFromParamsAsync(normalizedParams, normalizedParams.error_code);
+        }
       }
 
-      const normalizedParams = normalizeParams(params);
-      if (normalizedParams.code || normalizedParams.access_token || normalizedParams.error_code) {
-        await completeOAuthSessionFromParamsAsync(normalizedParams, normalizedParams.error_code);
+      const nextUser = await refreshSession();
+      if (!nextUser) {
+        throw new Error("Session introuvable apres retour de connexion.");
       }
     }
 
@@ -53,7 +59,7 @@ export function AuthCallbackHandler() {
     return () => {
       mounted = false;
     };
-  }, [latestUrl, params, router]);
+  }, [latestUrl, params, refreshSession, router]);
 
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>

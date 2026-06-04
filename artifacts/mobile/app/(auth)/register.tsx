@@ -70,7 +70,7 @@ export default function RegisterScreen() {
       });
     }
     await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
-    router.replace("/");
+    router.replace("/(tabs)");
   }
 
   async function handleGoogleRegister() {
@@ -166,12 +166,16 @@ export default function RegisterScreen() {
     );
   }
 
+  const keyboardBottomSpace = bottomPad + 190;
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
         style={[styles.root, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: keyboardBottomSpace }}
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={[styles.topBar, { paddingTop: topPad + 12 }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -179,7 +183,7 @@ export default function RegisterScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.form, { paddingBottom: bottomPad + 24 }]}>
+        <View style={styles.form}>
           <View style={[styles.iconBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <SamaStockLogo size={54} />
           </View>

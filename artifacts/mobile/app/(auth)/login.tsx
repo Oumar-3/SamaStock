@@ -74,7 +74,7 @@ export default function LoginScreen() {
       });
     }
     await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
-    router.replace("/");
+    router.replace("/(tabs)");
   }
 
   async function handleLogin() {
@@ -108,12 +108,16 @@ export default function LoginScreen() {
     }
   }
 
+  const keyboardBottomSpace = bottomPad + 180;
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
         style={[styles.root, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: keyboardBottomSpace }}
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <LinearGradient
           colors={[colors.primary + "25", colors.background]}
@@ -126,7 +130,7 @@ export default function LoginScreen() {
           <Text style={[styles.tagline, { color: colors.mutedForeground }]}>Gérez votre boutique</Text>
         </LinearGradient>
 
-        <View style={[styles.form, { paddingBottom: bottomPad + 24 }]}>
+        <View style={styles.form}>
           <Text style={[styles.title, { color: colors.text }]}>Connexion</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Bon retour parmi nous</Text>
 

@@ -2,7 +2,7 @@
   "expo": {
     "name": "SamaStock",
     "slug": "samastock",
-    "version": "1.0.4",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/logo1.png",
     "scheme": "samastock",
@@ -18,8 +18,9 @@
     },
     "android": {
       "package": "com.samastock.app",
-      "versionCode": 5,
+      "versionCode": 8,
       "permissions": [
+        "android.permission.INTERNET",
         "CAMERA",
         "POST_NOTIFICATIONS",
         "android.permission.CAMERA",
@@ -46,7 +47,8 @@
       ],
       "expo-sqlite",
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": false,

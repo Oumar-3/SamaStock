@@ -1,14 +1,19 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { useDebts } from "@/context/DebtsContext";
+import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
+import { useShopProfile } from "@/context/ShopProfileContext";
 import { useColors } from "@/hooks/useColors";
 import type { SaleRecord } from "@/models";
+import { shareBusinessReportPdf, type BusinessReportPeriod } from "@/services/reports/businessReport";
+import { shareProductSheetPdf } from "@/services/reports/productSheet";
 
 function money(value: number) {
   return `${Math.round(value).toLocaleString()} FCFA`;
@@ -69,13 +74,18 @@ function SaleCard({ sale, onDelete }: { sale: SaleRecord; onDelete: () => void }
 export default function HistoryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { refreshSales, listSalesPage, countSalesPage, getSalesSummary, hideSaleFromHistory } = useSales();
+  const { profile } = useShopProfile();
+  const { products, refreshProducts } = useProducts();
+  const { openDebts, refreshDebts } = useDebts();
+  const { sales, refreshSales, listSalesPage, countSalesPage, getSalesSummary, hideSaleFromHistory } = useSales();
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [pageSales, setPageSales] = useState<SaleRecord[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [reportBusy, setReportBusy] = useState<BusinessReportPeriod | null>(null);
+  const [productSheetBusy, setProductSheetBusy] = useState(false);
   const [summary, setSummary] = useState({ totalRevenue: 0, totalProfit: 0, todayCount: 0, creditCount: 0, visibleCount: 0 });
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -113,9 +123,49 @@ export default function HistoryScreen() {
     setRefreshing(true);
     try {
       await refreshSales();
+      await Promise.all([refreshProducts(), refreshDebts()]);
       await loadHistory("replace");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function shareReport(period: BusinessReportPeriod) {
+    setReportBusy(period);
+    try {
+      await Promise.all([refreshSales(), refreshProducts(), refreshDebts()]);
+      const mergedSales = [...sales, ...pageSales].filter((sale, index, list) => (
+        list.findIndex(item => item.id === sale.id) === index
+      ));
+      const uri = await shareBusinessReportPdf({
+        period,
+        profile,
+        sales: mergedSales,
+        products,
+        openDebts,
+      });
+      if (uri) {
+        Alert.alert("Rapport genere", uri);
+      }
+    } catch (err) {
+      Alert.alert("Rapport impossible", err instanceof Error ? err.message : "Impossible de generer le PDF.");
+    } finally {
+      setReportBusy(null);
+    }
+  }
+
+  async function shareProductSheet() {
+    setProductSheetBusy(true);
+    try {
+      await refreshProducts();
+      const uri = await shareProductSheetPdf({ profile, products });
+      if (uri) {
+        Alert.alert("Fiche generee", uri);
+      }
+    } catch (err) {
+      Alert.alert("Fiche impossible", err instanceof Error ? err.message : "Impossible de generer la fiche produits.");
+    } finally {
+      setProductSheetBusy(false);
     }
   }
 
@@ -171,6 +221,27 @@ export default function HistoryScreen() {
             <Feather name="credit-card" size={14} color={colors.warning} />
             <Text style={[styles.statPillText, { color: colors.warning }]}>{summary.creditCount} credit</Text>
           </View>
+        </View>
+
+        <View style={styles.reportRow}>
+          <TouchableOpacity
+            style={[styles.reportBtn, { backgroundColor: colors.card, borderColor: colors.border }, productSheetBusy && { opacity: 0.7 }]}
+            onPress={shareProductSheet}
+            disabled={productSheetBusy}
+            activeOpacity={0.78}
+          >
+            {productSheetBusy ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="file-text" size={16} color={colors.primary} />}
+            <Text style={[styles.reportBtnText, { color: colors.primary }]}>Fiche produits</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.reportBtn, { backgroundColor: colors.card, borderColor: colors.border }, reportBusy !== null && { opacity: 0.7 }]}
+            onPress={() => shareReport("month")}
+            disabled={reportBusy !== null}
+            activeOpacity={0.78}
+          >
+            {reportBusy === "month" ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="file-text" size={16} color={colors.primary} />}
+            <Text style={[styles.reportBtnText, { color: colors.primary }]}>Rapport mois</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -244,6 +315,9 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: "row", gap: 8 },
   statPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
   statPillText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  reportRow: { flexDirection: "row", gap: 10 },
+  reportBtn: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  reportBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   searchBox: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   list: { flex: 1 },

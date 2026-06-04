@@ -48,19 +48,24 @@ export default function Index() {
       restoredSessionKey.current = null;
       refreshedLoggedOutSessionKey.current = sessionKey;
       setRefreshingLoggedOut(true);
-      let nextOfflineMode = false;
       getActiveCloudOwnerIdAsync()
-        .then(ownerId => (ownerId ? clearCloudUserLocalDataAsync() : undefined))
-        .then(() => isOfflineModeAsync())
-        .then(isOffline => {
-          nextOfflineMode = isOffline;
+        .then(async ownerId => {
+          if (ownerId) {
+            setOfflineMode(false);
+            router.replace("/intro");
+            await clearCloudUserLocalDataAsync();
+            await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+            return;
+          }
+
+          const isOffline = await isOfflineModeAsync();
           setOfflineMode(isOffline);
-          return Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+          router.replace(isOffline && profile ? "/(tabs)" : "/intro");
+          await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
         })
         .catch(error => console.warn("Logged-out refresh failed", error))
         .finally(() => {
           setRefreshingLoggedOut(false);
-          router.replace(nextOfflineMode ? "/(tabs)" : "/intro");
         });
       return;
     }

@@ -1,5 +1,8 @@
+import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { Platform, Vibration } from "react-native";
+
+let nativeBeepPlayer: AudioPlayer | null = null;
 
 function playWebBeep() {
   if (Platform.OS !== "web") return;
@@ -27,12 +30,21 @@ function playWebBeep() {
   oscillator.stop(context.currentTime + 0.08);
 }
 
+async function playNativeBeep() {
+  if (Platform.OS === "web") return;
+
+  nativeBeepPlayer ??= createAudioPlayer(require("../assets/sounds/scan-beep.wav"));
+  await nativeBeepPlayer.seekTo(0);
+  nativeBeepPlayer.play();
+}
+
 export function playScanFeedback() {
   Vibration.vibrate(55);
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
   try {
     playWebBeep();
+    void playNativeBeep().catch(() => {});
   } catch {
     // Audio feedback is optional; scanning must never fail because of sound.
   }

@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "expo-audio": "~1.1.1",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-file-system": "~19.0.22",

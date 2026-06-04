@@ -44,6 +44,15 @@ function movementDisplay(move: StockMovement, colors: ReturnType<typeof useColor
   }
 }
 
+function InfoRow({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof useColors> }) {
+  return (
+    <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+      <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 export default function ProductDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -127,15 +136,6 @@ export default function ProductDetailScreen() {
     ]);
   }
 
-  function InfoRow({ label, value }: { label: string; value: string }) {
-    return (
-      <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>{label}</Text>
-        <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.topBar, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
@@ -189,15 +189,15 @@ export default function ProductDetailScreen() {
         </View>
 
         <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <InfoRow label="État stock" value={stockStatus} />
-          <InfoRow label="Marque" value={currentProduct.brand ?? "-"} />
-          <InfoRow label="Format" value={currentProduct.format ?? "-"} />
-          <InfoRow label="Code-barres" value={currentProduct.barcode ?? "-"} />
-          <InfoRow label="Prix d'achat" value={money(currentProduct.buyPrice)} />
-          <InfoRow label="Prix moyen estimé" value={money(averageCost)} />
-          <InfoRow label="Valeur du stock" value={money(stockValue)} />
-          <InfoRow label="Vente possible" value={money(potentialRevenue)} />
-          <InfoRow label="Bénéfice potentiel" value={money(potentialProfit)} />
+          <InfoRow label="État stock" value={stockStatus} colors={colors} />
+          <InfoRow label="Marque" value={currentProduct.brand ?? "-"} colors={colors} />
+          <InfoRow label="Format" value={currentProduct.format ?? "-"} colors={colors} />
+          <InfoRow label="Code-barres" value={currentProduct.barcode ?? "-"} colors={colors} />
+          <InfoRow label="Prix d'achat" value={money(currentProduct.buyPrice)} colors={colors} />
+          <InfoRow label="Prix moyen estimé" value={money(averageCost)} colors={colors} />
+          <InfoRow label="Valeur du stock" value={money(stockValue)} colors={colors} />
+          <InfoRow label="Vente possible" value={money(potentialRevenue)} colors={colors} />
+          <InfoRow label="Bénéfice potentiel" value={money(potentialProfit)} colors={colors} />
         </View>
 
         <View style={[styles.stockCard, { backgroundColor: colors.card, borderColor: isLow ? colors.warning : colors.border }]}>
