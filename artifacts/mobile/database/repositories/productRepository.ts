@@ -32,6 +32,7 @@ type ProductRow = {
   alert_threshold: number;
   barcode: string | null;
   image_uri: string | null;
+  image_path: string | null;
   estimated_average_price: number | null;
   is_archived: number;
   created_at: string;
@@ -79,6 +80,7 @@ function mapProduct(row: ProductRow): ProductRecord {
     alertThreshold: row.alert_threshold,
     barcode: row.barcode,
     imageUri: row.image_uri,
+    imagePath: row.image_path,
     estimatedAveragePrice: row.estimated_average_price,
     isArchived: row.is_archived === 1,
     createdAt: row.created_at,
@@ -181,7 +183,7 @@ async function findProductByBarcodeOwnerAsync(barcode: string) {
   if (candidates.length === 0) return null;
   const placeholders = candidates.map(() => "?").join(", ");
   const row = await db.getFirstAsync<ProductRow>(
-    `SELECT * FROM products WHERE barcode IN (${placeholders}) AND shop_id = ?`,
+    `SELECT * FROM products WHERE barcode IN (${placeholders}) AND shop_id = ? AND is_archived = 0`,
     ...candidates,
     shopId,
   );
@@ -275,6 +277,9 @@ export async function updateProductAsync(id: string, input: ProductUpdateInput) 
     alertThreshold: input.alertThreshold !== undefined ? integerOrZero(input.alertThreshold) : existing.alertThreshold,
     barcode: input.barcode !== undefined ? nullableText(input.barcode) : existing.barcode,
     imageUri: input.imageUri !== undefined ? nullableText(input.imageUri) : existing.imageUri,
+    imagePath: input.imageUri !== undefined && nullableText(input.imageUri)
+      ? null
+      : existing.imagePath,
     estimatedAveragePrice: input.estimatedAveragePrice !== undefined
       ? positiveOrZero(input.estimatedAveragePrice)
       : existing.estimatedAveragePrice,
@@ -294,7 +299,7 @@ export async function updateProductAsync(id: string, input: ProductUpdateInput) 
   await db.runAsync(
     `UPDATE products SET
       name = ?, category = ?, brand = ?, format = ?, buy_price = ?, sell_price = ?,
-      alert_threshold = ?, barcode = ?, image_uri = ?, estimated_average_price = ?,
+      alert_threshold = ?, barcode = ?, image_uri = ?, image_path = ?, estimated_average_price = ?,
       updated_at = ?, sync_status = 'pending', last_synced_at = NULL
      WHERE id = ? AND shop_id = ?`,
     next.name,
@@ -306,6 +311,7 @@ export async function updateProductAsync(id: string, input: ProductUpdateInput) 
     next.alertThreshold,
     next.barcode,
     next.imageUri,
+    next.imagePath,
     next.estimatedAveragePrice,
     new Date().toISOString(),
     id,
@@ -364,7 +370,7 @@ export async function receiveProductStockAsync(id: string, quantity: number, uni
   if (!product) throw new Error("Produit introuvable");
 
   const receivedQuantity = Math.max(0, Math.trunc(quantity));
-  if (receivedQuantity <= 0) throw new Error("Quantité invalide");
+  if (receivedQuantity <= 0) throw new Error("QuantitÃ© invalide");
 
   const now = new Date().toISOString();
   const nextStock = product.stock + receivedQuantity;
@@ -399,8 +405,8 @@ export async function receiveProductStockAsync(id: string, quantity: number, uni
       receivedQuantity,
       nextStock,
       cleanUnitCost
-        ? `Réception stock: ${receivedQuantity} à ${cleanUnitCost.toLocaleString()} FCFA`
-        : `Réception stock: ${receivedQuantity}`,
+        ? `RÃ©ception stock: ${receivedQuantity} Ã  ${cleanUnitCost.toLocaleString()} FCFA`
+        : `RÃ©ception stock: ${receivedQuantity}`,
       now,
     );
   });
@@ -433,7 +439,7 @@ export async function archiveProductAsync(id: string) {
       shopId,
       id,
       product.stock,
-      "Produit archivé",
+      "Produit archivÃ©",
       now,
     );
   });
@@ -452,4 +458,28 @@ export async function listStockMovementsForProductAsync(productId: string) {
     shopId,
   );
   return rows.map(mapMovement);
+}
+
+export async function clearProductImageUrisAsync(uris: string[]) {
+  const uniqueUris = Array.from(new Set(uris.filter(Boolean)));
+  if (uniqueUris.length === 0) return;
+
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  for (const uri of uniqueUris) {
+    await db.runAsync(
+      "UPDATE products SET image_uri = NULL, image_path = NULL WHERE shop_id = ? AND image_uri = ?",
+      shopId,
+      uri,
+    );
+  }
+}
+
+export async function clearAllProductImagesAsync() {
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  await db.runAsync(
+    "UPDATE products SET image_uri = NULL, image_path = NULL WHERE shop_id = ?",
+    shopId,
+  );
 }

@@ -1,7 +1,7 @@
 import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import type { ProductRecord, ShopProfile } from "@/models";
+import { sharePdfAsync } from "@/services/reports/pdfShare";
 
 type ProductSheetInput = {
   profile: ShopProfile | null | undefined;
@@ -142,12 +142,7 @@ export async function shareProductSheetPdf(input: ProductSheetInput) {
     base64: false,
   });
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(result.uri, {
-      mimeType: "application/pdf",
-      dialogTitle: "Fiche produits SamaStock",
-      UTI: "com.adobe.pdf",
-    });
+  if (await sharePdfAsync(result.uri, { dialogTitle: "Fiche produits SamaStock" })) {
     return;
   }
 

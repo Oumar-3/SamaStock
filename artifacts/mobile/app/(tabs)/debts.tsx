@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -29,16 +29,20 @@ type DebtInputProps = {
 
 function DebtInput(props: DebtInputProps) {
   return (
-    <View style={[styles.inputBox, { borderColor: props.colors.border, backgroundColor: props.colors.card }]}>
-      <Feather name={props.icon} size={16} color={props.colors.mutedForeground} />
-      <TextInput
-        style={[styles.input, { color: props.colors.text }]}
-        placeholder={props.placeholder}
-        placeholderTextColor={props.colors.mutedForeground}
-        value={props.value}
-        onChangeText={props.onChangeText}
-        keyboardType={props.keyboardType}
-      />
+    <View style={styles.inputField}>
+      <Text style={[styles.inputLabel, { color: props.colors.text }]}>{props.placeholder}</Text>
+      <View style={[styles.inputBox, { borderColor: props.colors.border, backgroundColor: props.colors.card }]}>
+        <Feather name={props.icon} size={16} color={props.colors.mutedForeground} />
+        <TextInput
+          style={[styles.input, { color: props.colors.text }]}
+          placeholder={"Saisir " + props.placeholder.toLowerCase()}
+          placeholderTextColor={props.colors.mutedForeground}
+          value={props.value}
+          onChangeText={props.onChangeText}
+          keyboardType={props.keyboardType}
+          accessibilityLabel={props.placeholder}
+        />
+      </View>
     </View>
   );
 }
@@ -54,6 +58,8 @@ function DebtCard({ debt, onPay, onOpen }: { debt: DebtWithClient; onPay: () => 
       style={[styles.debtCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={onOpen}
       activeOpacity={0.82}
+      accessibilityRole="button"
+      accessibilityLabel={"Ouvrir la dette de " + debt.clientName + ", reste " + money(debt.balance)}
     >
       <View style={styles.debtTop}>
         <View style={[styles.debtIcon, { backgroundColor: (isPaid ? colors.success : colors.destructive) + "14" }]}>
@@ -88,7 +94,16 @@ function DebtCard({ debt, onPay, onOpen }: { debt: DebtWithClient; onPay: () => 
       </View>
 
       {isPaid ? null : (
-        <TouchableOpacity style={[styles.payBtn, { backgroundColor: colors.primary }]} onPress={onPay} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.payBtn, { backgroundColor: colors.primary }]}
+          onPress={event => {
+            event.stopPropagation();
+            onPay();
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={"Ajouter un remboursement pour " + debt.clientName}
+        >
           <Feather name="check-circle" size={18} color="#fff" />
           <Text style={styles.payBtnText}>Ajouter remboursement</Text>
         </TouchableOpacity>
@@ -124,6 +139,7 @@ export default function DebtsScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const totalPaid = openDebts.reduce((sum, debt) => sum + debt.paidAmount, 0);
+  const totalSettled = paidDebts.reduce((sum, debt) => sum + debt.amount, 0);
   const activeDebts = viewMode === "open" ? openDebts : paidDebts;
 
   const filtered = useMemo(() => {
@@ -259,19 +275,29 @@ export default function DebtsScreen() {
             style={[styles.addBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
             onPress={() => setShowAdd(true)}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter une dette"
           >
             <Feather name="plus" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
         <View style={styles.summaryGrid}>
-          <View style={[styles.summaryCard, { backgroundColor: colors.destructive + "12" }]}>
-            <Text style={[styles.summaryLabel, { color: colors.destructive }]}>A recuperer</Text>
-            <Text style={[styles.summaryValue, { color: colors.destructive }]}>{money(totalOpenDebt)}</Text>
+          <View style={[styles.summaryCard, { backgroundColor: (viewMode === "open" ? colors.destructive : colors.success) + "12" }]}>
+            <Text style={[styles.summaryLabel, { color: viewMode === "open" ? colors.destructive : colors.success }]}>
+              {viewMode === "open" ? "A recuperer" : "Dettes reglees"}
+            </Text>
+            <Text style={[styles.summaryValue, { color: viewMode === "open" ? colors.destructive : colors.success }]}>
+              {viewMode === "open" ? money(totalOpenDebt) : String(paidDebts.length)}
+            </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.success + "12" }]}>
-            <Text style={[styles.summaryLabel, { color: colors.success }]}>Deja paye</Text>
-            <Text style={[styles.summaryValue, { color: colors.success }]}>{money(totalPaid)}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.success }]}>
+              {viewMode === "open" ? "Deja rembourse" : "Total regle"}
+            </Text>
+            <Text style={[styles.summaryValue, { color: colors.success }]}>
+              {money(viewMode === "open" ? totalPaid : totalSettled)}
+            </Text>
           </View>
         </View>
 
@@ -283,10 +309,17 @@ export default function DebtsScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
+            autoCorrect={false}
+            accessibilityLabel="Rechercher une dette par client, telephone ou description"
           />
           {search ? (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Feather name="x" size={16} color={colors.mutedForeground} />
+            <TouchableOpacity
+              style={styles.clearSearchBtn}
+              onPress={() => setSearch("")}
+              accessibilityRole="button"
+              accessibilityLabel="Effacer la recherche"
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -301,6 +334,9 @@ export default function DebtsScreen() {
               style={[styles.segmentBtn, viewMode === item.key && { backgroundColor: colors.card }]}
               onPress={() => setViewMode(item.key)}
               activeOpacity={0.82}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: viewMode === item.key }}
+              accessibilityLabel={item.label}
             >
               <Text style={[styles.segmentText, { color: viewMode === item.key ? colors.primary : colors.mutedForeground }]}>{item.label}</Text>
             </TouchableOpacity>
@@ -308,31 +344,57 @@ export default function DebtsScreen() {
         </View>
       </View>
 
-      <ScrollView
+      <FlatList
         style={styles.list}
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 90 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.resultRow}>
-          <Text style={[styles.resultText, { color: colors.mutedForeground }]}>
-            {filtered.length} client{filtered.length > 1 ? "s" : ""} a suivre
-          </Text>
-        </View>
-
-        {isLoading ? (
-          <SkeletonCard count={5} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={viewMode === "open" ? "credit-card" : "check-circle"}
-            title={viewMode === "open" ? "Aucune dette ouverte" : "Aucune dette reglee"}
-            subtitle={search ? "Aucune dette ne correspond a cette recherche" : viewMode === "open" ? "Les ventes a credit et dettes manuelles apparaitront ici" : "Les dettes remboursees resteront ici comme preuve"}
-            actionLabel={search || viewMode === "paid" ? undefined : "Ajouter une dette"}
-            onAction={search || viewMode === "paid" ? undefined : () => setShowAdd(true)}
+        data={isLoading ? [] : filtered}
+        keyExtractor={debt => debt.id}
+        renderItem={({ item: debt }) => (
+          <DebtCard
+            debt={debt}
+            onOpen={() => openDebtDetails(debt)}
+            onPay={() => setPayingDebt(debt)}
           />
-        ) : (
-          filtered.map(debt => <DebtCard key={debt.id} debt={debt} onOpen={() => openDebtDetails(debt)} onPay={() => setPayingDebt(debt)} />)
         )}
-      </ScrollView>
+        ListHeaderComponent={
+          !isLoading && filtered.length > 0 ? (
+            <View style={styles.resultRow}>
+              <Text style={[styles.resultText, { color: colors.mutedForeground }]}>
+                {filtered.length} dette{filtered.length > 1 ? "s" : ""}
+              </Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <SkeletonCard count={5} />
+          ) : (
+            <EmptyState
+              icon={viewMode === "open" ? "credit-card" : "check-circle"}
+              title={viewMode === "open" ? "Aucune dette ouverte" : "Aucune dette reglee"}
+              subtitle={
+                search
+                  ? "Aucune dette ne correspond a cette recherche"
+                  : viewMode === "open"
+                    ? "Les ventes a credit et dettes manuelles apparaitront ici"
+                    : "Les dettes remboursees resteront ici comme preuve"
+              }
+              actionLabel={search || viewMode === "paid" ? undefined : "Ajouter une dette"}
+              onAction={search || viewMode === "paid" ? undefined : () => setShowAdd(true)}
+            />
+          )
+        }
+        contentContainerStyle={[
+          styles.listContent,
+          !isLoading && filtered.length === 0 ? styles.emptyListContent : null,
+          { paddingBottom: bottomPad + 90 },
+        ]}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+      />
 
       <Modal visible={showAdd} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAdd(false)}>
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
@@ -341,19 +403,19 @@ export default function DebtsScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>Nouvelle dette</Text>
               <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Client, montant et note</Text>
             </View>
-            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setShowAdd(false)}>
+            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setShowAdd(false)} accessibilityRole="button" accessibilityLabel="Fermer la nouvelle dette">
               <Feather name="x" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>
-          <View style={styles.form}>
+          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             <DebtInput colors={colors} icon="user" placeholder="Nom client" value={clientName} onChangeText={setClientName} />
             <DebtInput colors={colors} icon="phone" placeholder="Telephone" value={clientPhone} onChangeText={setClientPhone} keyboardType="phone-pad" />
             <DebtInput colors={colors} icon="credit-card" placeholder="Montant" value={amount} onChangeText={setAmount} keyboardType="numeric" />
             <DebtInput colors={colors} icon="edit-3" placeholder="Description" value={description} onChangeText={setDescription} />
-            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handleAddDebt} disabled={busy}>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handleAddDebt} disabled={busy} accessibilityRole="button" accessibilityLabel="Enregistrer la dette" accessibilityState={{ disabled: busy, busy }}>
               <Text style={styles.primaryBtnText}>Enregistrer la dette</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -364,11 +426,11 @@ export default function DebtsScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>Remboursement</Text>
               <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Encaisser une partie ou tout</Text>
             </View>
-            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setPayingDebt(null)}>
+            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setPayingDebt(null)} accessibilityRole="button" accessibilityLabel="Fermer le remboursement">
               <Feather name="x" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>
-          <View style={styles.form}>
+          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             {payingDebt ? (
               <View style={[styles.paymentSummary, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.clientName, { color: colors.text }]}>{payingDebt.clientName}</Text>
@@ -377,10 +439,10 @@ export default function DebtsScreen() {
             ) : null}
             <DebtInput colors={colors} icon="dollar-sign" placeholder="Montant paye" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="numeric" />
             <DebtInput colors={colors} icon="edit-3" placeholder="Note optionnelle" value={paymentNote} onChangeText={setPaymentNote} />
-            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handlePayment} disabled={busy}>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handlePayment} disabled={busy} accessibilityRole="button" accessibilityLabel="Valider le remboursement" accessibilityState={{ disabled: busy, busy }}>
               <Text style={styles.primaryBtnText}>Valider le paiement</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -393,11 +455,11 @@ export default function DebtsScreen() {
             </View>
             <View style={styles.modalActions}>
               {selectedDebt && selectedDebt.status !== "paid" ? (
-                <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.primary + "12" }]} onPress={() => openEditDebt(selectedDebt)}>
+                <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.primary + "12" }]} onPress={() => openEditDebt(selectedDebt)} accessibilityRole="button" accessibilityLabel="Modifier cette dette">
                   <Feather name="edit-3" size={18} color={colors.primary} />
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setSelectedDebt(null)}>
+              <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setSelectedDebt(null)} accessibilityRole="button" accessibilityLabel="Fermer le detail de la dette">
                 <Feather name="x" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -435,7 +497,7 @@ export default function DebtsScreen() {
                 <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Sujet de la dette</Text>
                 <Text style={[styles.detailDescription, { color: colors.mutedForeground }]}>{selectedDebt.description ?? "Aucune description renseignee"}</Text>
                 {selectedDebt.saleId ? (
-                  <TouchableOpacity style={[styles.receiptLink, { backgroundColor: colors.primary + "12" }]} onPress={() => router.push({ pathname: "/receipt/[id]", params: { id: selectedDebt.saleId ?? "" } })}>
+                  <TouchableOpacity style={[styles.receiptLink, { backgroundColor: colors.primary + "12" }]} onPress={() => router.push({ pathname: "/receipt/[id]", params: { id: selectedDebt.saleId ?? "" } })} accessibilityRole="button" accessibilityLabel="Voir le recu de vente">
                     <Feather name="file-text" size={16} color={colors.primary} />
                     <Text style={[styles.receiptLinkText, { color: colors.primary }]}>Voir le recu de vente</Text>
                   </TouchableOpacity>
@@ -470,7 +532,7 @@ export default function DebtsScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>Modifier dette</Text>
               <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Corriger client, montant ou motif</Text>
             </View>
-            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setEditingDebt(null)}>
+            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setEditingDebt(null)} accessibilityRole="button" accessibilityLabel="Fermer la modification">
               <Feather name="x" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>
@@ -487,7 +549,7 @@ export default function DebtsScreen() {
             <DebtInput colors={colors} icon="phone" placeholder="Telephone" value={editClientPhone} onChangeText={setEditClientPhone} keyboardType="phone-pad" />
             <DebtInput colors={colors} icon="credit-card" placeholder="Montant dette" value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" />
             <DebtInput colors={colors} icon="edit-3" placeholder="Description / sujet" value={editDescription} onChangeText={setEditDescription} />
-            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handleUpdateDebt} disabled={busy}>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handleUpdateDebt} disabled={busy} accessibilityRole="button" accessibilityLabel="Enregistrer les modifications" accessibilityState={{ disabled: busy, busy }}>
               <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -521,11 +583,14 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
   summaryValue: { fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
   searchBox: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
-  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  searchInput: { flex: 1, minHeight: 44, fontSize: 15, fontFamily: "Inter_400Regular" },
+  clearSearchBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -10 },
   segment: { flexDirection: "row", borderRadius: 13, padding: 4, gap: 4 },
   segmentBtn: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   segmentText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
   list: { flex: 1 },
+  listContent: { padding: 16 },
+  emptyListContent: { flexGrow: 1 },
   resultRow: { marginBottom: 10 },
   resultText: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
   debtCard: {
@@ -562,8 +627,10 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
   modalSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  closeBtn: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  closeBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   form: { padding: 16, gap: 12 },
+  inputField: { gap: 7 },
+  inputLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
   inputBox: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   primaryBtn: { minHeight: 50, borderRadius: 12, alignItems: "center", justifyContent: "center" },

@@ -10,6 +10,7 @@ export type ProductRecord = {
   alertThreshold: number;
   barcode: string | null;
   imageUri: string | null;
+  imagePath: string | null;
   estimatedAveragePrice: number | null;
   isArchived: boolean;
   createdAt: string;

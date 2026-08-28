@@ -48,6 +48,7 @@ type LocalProductRow = {
   alert_threshold: number;
   barcode: string | null;
   image_uri: string | null;
+  image_path: string | null;
   estimated_average_price: number | null;
   is_archived: number;
   created_at: string;
@@ -138,8 +139,11 @@ type RemoteClientRow = Omit<LocalClientRow, "deleted_at"> & {
   deleted_at: string | null;
 };
 
-type RemoteProductRow = Omit<LocalProductRow, "is_archived" | "deleted_at"> & {
+type RemoteProductRow = Omit<LocalProductRow, "is_archived" | "deleted_at" | "image_uri" | "image_path"> & {
   owner_id: string;
+  image_uri?: null;
+  image_path?: null;
+  image_url?: null;
   is_archived: boolean;
   deleted_at: string | null;
 };
@@ -210,6 +214,23 @@ function getSupabaseErrorMessage(error: unknown) {
   return "Erreur Supabase inconnue.";
 }
 
+function getMissingRemoteColumn(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const maybeError = error as { code?: string; message?: string; details?: string };
+  if (maybeError.code !== "PGRST204") return null;
+  const message = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`;
+  const quoted = message.match(/'([^']+)' column/);
+  if (quoted?.[1]) return quoted[1];
+  const knownColumns = ["image_path", "image_url", "image_uri", "shop_id"];
+  return knownColumns.find(column => message.includes(column)) ?? null;
+}
+
+function withoutRemoteColumn<T extends Record<string, unknown>>(rows: T[], column: string) {
+  return rows.map(row => {
+    const { [column]: _removed, ...rest } = row;
+    return rest;
+  });
+}
 function throwSupabaseError(error: unknown): never {
   throw new Error(getSupabaseErrorMessage(error));
 }
@@ -292,7 +313,7 @@ async function getOwnerId() {
 
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
-  if (!data.user) throw new Error("Utilisateur Supabase non connecté.");
+  if (!data.user) throw new Error("Utilisateur Supabase non connectÃƒÂ©.");
   if (data.user.id !== sessionData.session.user.id) {
     throw new Error("Session Supabase incoherente. Deconnectez-vous puis reconnectez-vous.");
   }
@@ -360,7 +381,6 @@ function toRemoteProduct(row: LocalProductRow, ownerId: string): RemoteProductRo
     stock: row.stock,
     alert_threshold: row.alert_threshold,
     barcode: row.barcode,
-    image_uri: row.image_uri,
     estimated_average_price: row.estimated_average_price,
     is_archived: row.is_archived === 1,
     sync_status: "synced",
@@ -566,9 +586,27 @@ async function pushProducts(ownerId: string): Promise<SyncResult> {
   const rows = await getPendingRows<LocalProductRow>("products");
   if (rows.length === 0) return result;
 
+  const remoteRows = rows.map(row => ({
+    ...toRemoteProduct(row, ownerId),
+    image_uri: null,
+    image_path: null,
+    image_url: null,
+  }));
+
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("products").upsert(withRemotePushTimestamp(rows.map(row => toRemoteProduct(row, ownerId))), { onConflict: "id" });
-  if (error) {
+  let rowsToPush: Array<Record<string, unknown>> = remoteRows;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const { error } = await supabase
+      .from("products")
+      .upsert(withRemotePushTimestamp(rowsToPush), { onConflict: "id" });
+    if (!error) break;
+
+    const missingColumn = getMissingRemoteColumn(error);
+    if (missingColumn) {
+      rowsToPush = withoutRemoteColumn(rowsToPush, missingColumn);
+      continue;
+    }
+
     result.failed = rows.length;
     throwSupabaseError(error);
   }
@@ -813,13 +851,19 @@ async function pullProducts(ownerId: string): Promise<SyncResult> {
       continue;
     }
 
+    const current = await db.getFirstAsync<{ image_uri: string | null }>(
+      "SELECT image_uri FROM products WHERE id = ?",
+      row.id,
+    );
+    const imageUri = current?.image_uri ?? null;
+
     await db.runAsync(
       `INSERT INTO products (
         id, shop_id, name, category, brand, format, buy_price, sell_price, stock,
-        alert_threshold, barcode, image_uri, estimated_average_price,
+        alert_threshold, barcode, image_uri, image_path, estimated_average_price,
         is_archived, created_at, updated_at, remote_id, sync_status,
         last_synced_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         shop_id = excluded.shop_id,
         name = excluded.name,
@@ -831,7 +875,8 @@ async function pullProducts(ownerId: string): Promise<SyncResult> {
         stock = excluded.stock,
         alert_threshold = excluded.alert_threshold,
         barcode = excluded.barcode,
-        image_uri = excluded.image_uri,
+        image_uri = COALESCE(products.image_uri, excluded.image_uri),
+        image_path = products.image_path,
         estimated_average_price = excluded.estimated_average_price,
         is_archived = excluded.is_archived,
         updated_at = excluded.updated_at,
@@ -850,7 +895,8 @@ async function pullProducts(ownerId: string): Promise<SyncResult> {
       row.stock,
       row.alert_threshold,
       row.barcode,
-      row.image_uri,
+      imageUri,
+      null,
       row.estimated_average_price,
       row.is_archived ? 1 : 0,
       row.created_at,

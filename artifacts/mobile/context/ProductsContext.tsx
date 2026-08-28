@@ -3,6 +3,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   adjustProductStockAsync,
   archiveProductAsync,
+  clearAllProductImagesAsync,
+  clearProductImageUrisAsync,
   createProductAsync,
   findProductByBarcodeAsync,
   getProductByIdAsync,
@@ -30,6 +32,8 @@ type ProductsContextType = {
   adjustStock: (id: string, nextStock: number, note?: string) => Promise<ProductRecord>;
   receiveStock: (id: string, quantity: number, unitCost?: number) => Promise<ProductRecord>;
   archiveProduct: (id: string) => Promise<void>;
+  clearAllImages: () => Promise<void>;
+  clearImageUris: (uris: string[]) => Promise<void>;
   listMovements: (productId: string) => Promise<StockMovement[]>;
 };
 
@@ -96,6 +100,16 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     scheduleCloudBackup();
   }, [refreshProducts]);
 
+  const clearAllImages = useCallback(async () => {
+    await clearAllProductImagesAsync();
+    await refreshProducts();
+  }, [refreshProducts]);
+
+  const clearImageUris = useCallback(async (uris: string[]) => {
+    await clearProductImageUrisAsync(uris);
+    await refreshProducts();
+  }, [refreshProducts]);
+
   const value = useMemo(
     () => ({
       products,
@@ -109,9 +123,11 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       adjustStock,
       receiveStock,
       archiveProduct,
+      clearAllImages,
+      clearImageUris,
       listMovements: listStockMovementsForProductAsync,
     }),
-    [adjustStock, archiveProduct, createProduct, isLoading, isReady, lowStockSuggestions, products, receiveStock, refreshProducts, updateProduct],
+    [adjustStock, archiveProduct, clearAllImages, clearImageUris, createProduct, isLoading, isReady, lowStockSuggestions, products, receiveStock, refreshProducts, updateProduct],
   );
 
   return <ProductsContext.Provider value={value}>{children}</ProductsContext.Provider>;

@@ -1,10 +1,13 @@
 import { Feather } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -15,7 +18,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { SamaStockLogo } from "@/components/SamaStockLogo";
 import { useAuth } from "@/context/AuthContext";
 import { useDebts } from "@/context/DebtsContext";
 import { useProducts } from "@/context/ProductsContext";
@@ -30,6 +32,15 @@ import {
 } from "@/services/notifications/localNotifications";
 import { getBackupOverviewAsync, type BackupOverview } from "@/services/sync/backupStatus";
 import { syncBasicTablesAsync } from "@/services/sync/basicSync";
+import {
+  deleteAllProductImagesAsync,
+  deleteSelectedProductImagesAsync,
+  deleteUnusedProductImagesAsync,
+  formatProductImagesSize,
+  getProductImagesOverviewAsync,
+  listProductImagesAsync,
+  type ProductImageFileInfo,
+} from "@/utils/productImages";
 
 type FieldName = "shopName" | "ownerName" | "phone" | "address";
 
@@ -51,7 +62,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile, isLoading, saveProfile, refreshProfile } = useShopProfile();
   const { user, isConfigured, logout } = useAuth();
-  const { lowStockSuggestions, refreshProducts } = useProducts();
+  const { products, lowStockSuggestions, refreshProducts, clearAllImages, clearImageUris } = useProducts();
   const { refreshSales } = useSales();
   const { totalOpenDebt, refreshDebts } = useDebts();
 
@@ -67,6 +78,11 @@ export default function SettingsScreen() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationsBusy, setNotificationsBusy] = useState(false);
+  const [photoOverview, setPhotoOverview] = useState({ count: 0, totalBytes: 0, unusedCount: 0, unusedBytes: 0 });
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [photoFiles, setPhotoFiles] = useState<ProductImageFileInfo[]>([]);
+  const [selectedPhotoUris, setSelectedPhotoUris] = useState<string[]>([]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -90,6 +106,10 @@ export default function SettingsScreen() {
     void getLocalNotificationsEnabledAsync().then(setNotificationsEnabled).catch(() => setNotificationsEnabled(false));
   }, []);
 
+  useEffect(() => {
+    void loadPhotoOverview();
+  }, [products]);
+
   async function loadBackupOverview() {
     setBackupLoading(true);
     try {
@@ -97,6 +117,24 @@ export default function SettingsScreen() {
     } finally {
       setBackupLoading(false);
     }
+  }
+
+  async function loadPhotoOverview() {
+    setPhotoOverview(await getProductImagesOverviewAsync(products.map(product => product.imageUri)));
+  }
+
+  async function loadPhotoFiles() {
+    setPhotoFiles(await listProductImagesAsync(products.map(product => product.imageUri)));
+  }
+
+  async function openPhotoManager() {
+    await loadPhotoFiles();
+    setSelectedPhotoUris([]);
+    setPhotoModalVisible(true);
+  }
+
+  function togglePhotoSelection(uri: string) {
+    setSelectedPhotoUris(prev => prev.includes(uri) ? prev.filter(item => item !== uri) : [...prev, uri]);
   }
 
   function updateField(name: FieldName, value: string) {
@@ -144,6 +182,13 @@ export default function SettingsScreen() {
 
   async function performLogout() {
     try {
+      if (user) {
+        try {
+          await syncBasicTablesAsync();
+        } catch (syncError) {
+          console.warn("Logout backup failed", syncError);
+        }
+      }
       await logout();
       router.replace("/intro");
     } catch (err) {
@@ -167,7 +212,7 @@ export default function SettingsScreen() {
       const received = results.reduce((total, result) => total + result.pulled, 0);
       Alert.alert(
         "Sauvegarde terminee",
-        sent + received > 0 ? `Envoyes: ${sent} • Recuperes: ${received}` : "Tout est deja a jour.",
+        sent + received > 0 ? `Envoyes: ${sent} - Recuperes: ${received}` : "Tout est deja a jour.",
       );
     } catch (err) {
       Alert.alert("Sauvegarde impossible", err instanceof Error ? err.message : "Reessayez dans quelques instants.");
@@ -201,6 +246,77 @@ export default function SettingsScreen() {
     }
   }
 
+
+  async function handleDeleteUnusedPhotos() {
+    setPhotoBusy(true);
+    try {
+      const deleted = await deleteUnusedProductImagesAsync(products.map(product => product.imageUri));
+      await loadPhotoOverview();
+      Alert.alert("Photos nettoyees", deleted > 0 ? `${deleted} photo${deleted > 1 ? "s" : ""} supprimee${deleted > 1 ? "s" : ""}.` : "Aucune photo inutile a supprimer.");
+    } catch (err) {
+      Alert.alert("Photos produits", err instanceof Error ? err.message : "Impossible de nettoyer les photos.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handleDeleteSelectedPhotos() {
+    if (selectedPhotoUris.length === 0) return;
+
+    Alert.alert(
+      "Supprimer la selection ?",
+      "Les produits lies a ces photos resteront dans l'app, mais l'image sera retiree.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            setPhotoBusy(true);
+            try {
+              const deleted = await deleteSelectedProductImagesAsync(selectedPhotoUris);
+              await clearImageUris(selectedPhotoUris);
+              await refreshProducts();
+              await loadPhotoOverview();
+              await loadPhotoFiles();
+              setSelectedPhotoUris([]);
+              Alert.alert("Photos supprimees", `${deleted} photo${deleted > 1 ? "s" : ""} supprimee${deleted > 1 ? "s" : ""}.`);
+            } catch (err) {
+              Alert.alert("Photos produits", err instanceof Error ? err.message : "Impossible de supprimer la selection.");
+            } finally {
+              setPhotoBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+  async function handleDeleteAllPhotos() {
+    Alert.alert(
+      "Supprimer les photos ?",
+      "Les produits resteront dans l'app, mais leurs images seront retirees de ce telephone.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            setPhotoBusy(true);
+            try {
+              const deleted = await deleteAllProductImagesAsync();
+              await clearAllImages();
+              await loadPhotoOverview();
+              Alert.alert("Photos supprimees", `${deleted} photo${deleted > 1 ? "s" : ""} supprimee${deleted > 1 ? "s" : ""}.`);
+            } catch (err) {
+              Alert.alert("Photos produits", err instanceof Error ? err.message : "Impossible de supprimer les photos.");
+            } finally {
+              setPhotoBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
   function formatBackupDate(value: string | null) {
     if (!value) return "Jamais";
     const date = new Date(value);
@@ -223,18 +339,26 @@ export default function SettingsScreen() {
     : backupOverview.pendingCount > 0
       ? `${backupOverview.pendingCount} changement${backupOverview.pendingCount > 1 ? "s" : ""} a sauvegarder.`
       : `Derniere sauvegarde : ${formatBackupDate(backupOverview.lastBackupAt)}`;
-  const accountState = user ? "Connecte" : "Local";
-  const backupState = user
-    ? backupOverview.pendingCount > 0
-      ? `${backupOverview.pendingCount} en attente`
-      : "A jour"
-    : "Telephone";
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+  const appBuild = Constants.expoConfig?.android?.versionCode ? "Build " + Constants.expoConfig.android.versionCode : "Beta";
+
+  const isProfileDirty =
+    !profile ||
+    form.shopName !== profile.shopName ||
+    form.ownerName !== profile.ownerName ||
+    form.phone !== profile.phone ||
+    form.address !== profile.address;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={[styles.root, { backgroundColor: colors.background }]}>
         <View style={[styles.topBar, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={[styles.iconBtn, { backgroundColor: colors.muted }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={[styles.iconBtn, { backgroundColor: colors.muted }]}
+            accessibilityRole="button"
+            accessibilityLabel="Retour"
+          >
             <Feather name="arrow-left" size={22} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.text }]}>Parametres</Text>
@@ -246,47 +370,67 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.brandCard, { backgroundColor: colors.primaryDark }]}>
-            <View style={styles.brandMain}>
-              <View style={styles.brandIcon}>
-                <SamaStockLogo size={38} />
-              </View>
-              <View style={styles.brandText}>
-                <Text style={styles.brandName}>SamaStock</Text>
-                <Text style={styles.brandSubtitle}>
-                  {user ? "Compte actif et sauvegarde disponible" : "Mode local, sauvegarde sur ce telephone"}
-                </Text>
-              </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Compte</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Connexion et sauvegarde cloud.</Text>
             </View>
-            <View style={styles.brandMetaRow}>
-              <View style={styles.brandPill}>
-                <Feather name={user ? "cloud" : "smartphone"} size={14} color="#FFFFFF" />
-                <Text style={styles.brandPillText}>{accountState}</Text>
+            <View style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.accountTopRow}>
+                <View style={[styles.accountIcon, { backgroundColor: user ? colors.primary + "16" : colors.warning + "16" }]}>
+                  <Feather name={user ? "shield" : "smartphone"} size={22} color={user ? colors.primary : colors.warning} />
+                </View>
+                <View style={styles.accountText}>
+                  <Text style={[styles.accountTitle, { color: colors.text }]}>{user ? "Compte connecte" : "Mode local"}</Text>
+                  <Text style={[styles.accountSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
+                    {user?.email ?? "Vos donnees restent sur ce telephone tant que vous ne connectez pas un compte."}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.brandPill}>
-                <Feather name={notificationsEnabled ? "bell" : "bell-off"} size={14} color="#FFFFFF" />
-                <Text style={styles.brandPillText}>{notificationsEnabled ? "Rappels actifs" : "Rappels off"}</Text>
-              </View>
+
+              {!isConfigured ? (
+                <View style={[styles.notice, { backgroundColor: colors.destructive + "12", borderColor: colors.destructive + "25" }]}>
+                  <Feather name="alert-circle" size={16} color={colors.destructive} />
+                  <Text style={[styles.noticeText, { color: colors.destructive }]}>La connexion n'est pas disponible sur cette installation.</Text>
+                </View>
+              ) : null}
+
+              {!user ? (
+                <View style={styles.accountActions}>
+                  <TouchableOpacity
+                    style={[styles.cloudBtn, { backgroundColor: colors.primary }, !isConfigured && { opacity: 0.55 }]}
+                    onPress={() => router.push("/(auth)/login")}
+                    disabled={!isConfigured}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Se connecter"
+                    accessibilityState={{ disabled: !isConfigured }}
+                  >
+                    <Feather name="log-in" size={18} color="#fff" />
+                    <Text style={styles.cloudBtnText}>Se connecter</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, { borderColor: colors.border }]}
+                    onPress={() => router.push("/(auth)/register")}
+                    disabled={!isConfigured}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Creer un compte"
+                    accessibilityState={{ disabled: !isConfigured }}
+                  >
+                    <Feather name="user-plus" size={18} color={colors.primary} />
+                    <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Creer un compte</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={[styles.notice, { backgroundColor: colors.success + "12", borderColor: colors.success + "25" }]}>
+                  <Feather name="check-circle" size={16} color={colors.success} />
+                  <Text style={[styles.noticeText, { color: colors.success }]}>Vos donnees peuvent etre recuperees avec ce compte.</Text>
+                </View>
+              )}
             </View>
           </View>
-
-          <View style={styles.quickGrid}>
-            <View style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.quickIcon, { backgroundColor: colors.primary + "12" }]}>
-                <Feather name={user ? "user-check" : "user"} size={18} color={colors.primary} />
-              </View>
-              <Text style={[styles.quickLabel, { color: colors.mutedForeground }]}>Compte</Text>
-              <Text style={[styles.quickValue, { color: colors.text }]} numberOfLines={1}>{user?.email ?? "Non connecte"}</Text>
-            </View>
-            <View style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.quickIcon, { backgroundColor: (backupOverview.pendingCount > 0 ? colors.warning : colors.success) + "12" }]}>
-                <Feather name={backupOverview.pendingCount > 0 ? "clock" : "check-circle"} size={18} color={backupOverview.pendingCount > 0 ? colors.warning : colors.success} />
-              </View>
-              <Text style={[styles.quickLabel, { color: colors.mutedForeground }]}>Sauvegarde</Text>
-              <Text style={[styles.quickValue, { color: colors.text }]}>{backupLoading ? "Verification..." : backupState}</Text>
-            </View>
-          </View>
-
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Profil boutique</Text>
@@ -319,10 +463,13 @@ export default function SettingsScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.saveBtn, { backgroundColor: colors.primary }, saving && { opacity: 0.75 }]}
+            style={[styles.saveBtn, { backgroundColor: colors.primary }, (saving || isLoading || !isProfileDirty) && { opacity: 0.5 }]}
             onPress={handleSave}
-            disabled={saving || isLoading}
+            disabled={saving || isLoading || !isProfileDirty}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Enregistrer le profil boutique"
+            accessibilityState={{ disabled: saving || isLoading || !isProfileDirty, busy: saving }}
           >
             {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={18} color="#fff" />}
             {!saving && <Text style={styles.saveBtnText}>Enregistrer</Text>}
@@ -358,15 +505,20 @@ export default function SettingsScreen() {
                 </View>
               )}
 
-              <TouchableOpacity
-                style={[styles.cloudBtn, { backgroundColor: user ? colors.primary : colors.text }, (backupBusy || backupLoading) && { opacity: 0.7 }]}
-                onPress={handleBackupNow}
-                disabled={backupBusy || backupLoading}
-                activeOpacity={0.85}
-              >
-                {backupBusy ? <ActivityIndicator color="#fff" /> : <Feather name={user ? "upload-cloud" : "log-in"} size={18} color="#fff" />}
-                {!backupBusy && <Text style={styles.cloudBtnText}>{user ? "Sauvegarder maintenant" : "Se connecter"}</Text>}
-              </TouchableOpacity>
+              {user ? (
+                <TouchableOpacity
+                  style={[styles.cloudBtn, { backgroundColor: colors.primary }, (backupBusy || backupLoading) && { opacity: 0.7 }]}
+                  onPress={handleBackupNow}
+                  disabled={backupBusy || backupLoading}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sauvegarder maintenant"
+                  accessibilityState={{ disabled: backupBusy || backupLoading, busy: backupBusy }}
+                >
+                  {backupBusy ? <ActivityIndicator color="#fff" /> : <Feather name="upload-cloud" size={18} color="#fff" />}
+                  {!backupBusy ? <Text style={styles.cloudBtnText}>Sauvegarder maintenant</Text> : null}
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
 
@@ -385,7 +537,7 @@ export default function SettingsScreen() {
                     {notificationsEnabled ? "Notifications activees" : "Notifications desactivees"}
                   </Text>
                   <Text style={[styles.cloudSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
-                    Rappel quand le stock ou les dettes changent.
+                    Un rappel quotidien pour le stock faible et les dettes.
                   </Text>
                 </View>
               </View>
@@ -393,7 +545,7 @@ export default function SettingsScreen() {
               <View style={[styles.notice, { backgroundColor: colors.info + "12", borderColor: colors.info + "25" }]}>
                 <Feather name="bell" size={16} color={colors.info} />
                 <Text style={[styles.noticeText, { color: colors.info }]}>
-                  Aujourd'hui : {lowStockSuggestions.length} stock faible • {Math.round(totalOpenDebt).toLocaleString("fr-FR")} FCFA a recuperer.
+                  Aujourd'hui : {lowStockSuggestions.length} stock faible - {Math.round(totalOpenDebt).toLocaleString("fr-FR")} FCFA a recuperer.
                 </Text>
               </View>
 
@@ -402,6 +554,9 @@ export default function SettingsScreen() {
                 onPress={handleToggleNotifications}
                 disabled={notificationsBusy}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={notificationsEnabled ? "Desactiver les notifications" : "Activer les notifications"}
+                accessibilityState={{ disabled: notificationsBusy, busy: notificationsBusy }}
               >
                 {notificationsBusy ? <ActivityIndicator color="#fff" /> : <Feather name={notificationsEnabled ? "bell-off" : "bell"} size={18} color="#fff" />}
                 {!notificationsBusy && <Text style={styles.cloudBtnText}>{notificationsEnabled ? "Desactiver" : "Activer les notifications"}</Text>}
@@ -409,90 +564,209 @@ export default function SettingsScreen() {
 
             </View>
           </View>
-
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Compte</Text>
-              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Connexion et acces cloud.</Text>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Photos produits</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Stockees uniquement sur ce telephone.</Text>
             </View>
-            <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
               <View style={styles.cloudHeader}>
-                <View style={[styles.cloudIcon, { backgroundColor: colors.primary + "16" }]}>
-                  <Feather name={user ? "cloud" : "log-in"} size={20} color={colors.primary} />
+                <View style={[styles.cloudIcon, { backgroundColor: colors.primary + "16" }]}> 
+                  <Feather name="image" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.cloudText}>
-                  <Text style={[styles.cloudTitle, { color: colors.text }]}>
-                    {user ? "Compte connecte" : "Compte non connecte"}
-                  </Text>
+                  <Text style={[styles.cloudTitle, { color: colors.text }]}>Photos locales</Text>
                   <Text style={[styles.cloudSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
-                    {user?.email ?? "Connectez-vous pour retrouver vos donnees sur un autre telephone."}
+                    {photoOverview.count} photo{photoOverview.count > 1 ? "s" : ""} - {formatProductImagesSize(photoOverview.totalBytes)} utilise{photoOverview.totalBytes > 0 ? "s" : ""}.
                   </Text>
                 </View>
               </View>
 
-              {user ? (
+              <View style={[styles.notice, { backgroundColor: colors.info + "12", borderColor: colors.info + "25" }]}> 
+                <Feather name="smartphone" size={16} color={colors.info} />
+                <Text style={[styles.noticeText, { color: colors.info }]}>Les photos ne sont pas envoyees au cloud. En changeant de telephone, les produits reviennent sans photo.</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.cloudBtn, { backgroundColor: colors.primary }, photoBusy && { opacity: 0.65 }]}
+                onPress={openPhotoManager}
+                disabled={photoBusy || photoOverview.count === 0}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Voir les photos produits"
+                accessibilityState={{ disabled: photoBusy || photoOverview.count === 0, busy: photoBusy }}
+              >
+                <Feather name="grid" size={18} color="#fff" />
+                <Text style={styles.cloudBtnText}>Voir les photos</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryBtn, { borderColor: colors.border }, photoBusy && { opacity: 0.65 }]}
+                onPress={handleDeleteUnusedPhotos}
+                disabled={photoBusy || photoOverview.unusedCount === 0}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Supprimer les photos inutilisees"
+                accessibilityState={{ disabled: photoBusy || photoOverview.unusedCount === 0, busy: photoBusy }}
+              >
+                <Feather name="trash-2" size={18} color={colors.primary} />
+                <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Nettoyer inutilisees</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.logoutBtn, { borderColor: colors.destructive + "45", backgroundColor: colors.destructive + "10" }, photoBusy && { opacity: 0.65 }]}
+                onPress={handleDeleteAllPhotos}
+                disabled={photoBusy || photoOverview.count === 0}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Supprimer toutes les photos produits"
+                accessibilityState={{ disabled: photoBusy || photoOverview.count === 0, busy: photoBusy }}
+              >
+                <Feather name="trash" size={18} color={colors.destructive} />
+                <Text style={[styles.logoutBtnText, { color: colors.destructive }]}>Supprimer toutes les photos</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Application</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Quelques reperes utiles.</Text>
+            </View>
+            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <InfoRow icon="dollar-sign" label="Devise" value="FCFA" helper="Prix, ventes et dettes" />
+              <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+              <InfoRow
+                icon={user ? "cloud" : "smartphone"}
+                label="Stockage"
+                value={user ? "Telephone + cloud" : "Telephone"}
+                helper={user ? "Donnees cloud, photos telephone" : "Mode local active"}
+              />
+              <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+              <InfoRow icon="info" label="Version" value={appVersion} helper={appBuild} />
+            </View>
+          </View>
+          {user ? (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.destructive }]}>Session</Text>
+                <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Quitter ce compte sur cet appareil.</Text>
+              </View>
+              <View style={[styles.dangerCard, { backgroundColor: colors.card, borderColor: colors.destructive + "25" }]}>
+                <View style={styles.cloudHeader}>
+                  <View style={[styles.cloudIcon, { backgroundColor: colors.destructive + "12" }]}>
+                    <Feather name="log-out" size={20} color={colors.destructive} />
+                  </View>
+                  <View style={styles.cloudText}>
+                    <Text style={[styles.cloudTitle, { color: colors.text }]}>Deconnexion</Text>
+                    <Text style={[styles.cloudSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
+                      Vos donnees locales restent sur ce telephone.
+                    </Text>
+                  </View>
+                </View>
                 <TouchableOpacity
                   style={[styles.logoutBtn, { borderColor: colors.destructive + "45", backgroundColor: colors.destructive + "10" }]}
                   onPress={handleLogout}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Se deconnecter"
                 >
                   <Feather name="log-out" size={18} color={colors.destructive} />
-                  <Text style={[styles.logoutBtnText, { color: colors.destructive }]}>Deconnexion</Text>
+                  <Text style={[styles.logoutBtnText, { color: colors.destructive }]}>Se deconnecter</Text>
                 </TouchableOpacity>
-              ) : null}
-
-              {!isConfigured ? (
-                <View style={[styles.notice, { backgroundColor: colors.destructive + "12", borderColor: colors.destructive + "25" }]}>
-                  <Feather name="alert-circle" size={16} color={colors.destructive} />
-                  <Text style={[styles.noticeText, { color: colors.destructive }]}>La connexion n'est pas disponible sur cette installation.</Text>
-                </View>
-              ) : null}
-
-              {!user ? (
-                <>
-                  <TouchableOpacity
-                    style={[styles.cloudBtn, { backgroundColor: colors.primary }, !isConfigured && { opacity: 0.55 }]}
-                    onPress={() => router.push("/(auth)/login")}
-                    disabled={!isConfigured}
-                    activeOpacity={0.85}
-                  >
-                    <Feather name="log-in" size={18} color="#fff" />
-                    <Text style={styles.cloudBtnText}>Se connecter</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.secondaryBtn, { borderColor: colors.border }]}
-                    onPress={() => router.push("/(auth)/register")}
-                    disabled={!isConfigured}
-                  >
-                    <Feather name="user-plus" size={18} color={colors.primary} />
-                    <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Creer un compte</Text>
-                  </TouchableOpacity>
-                </>
-              ) : null}
+              </View>
             </View>
-          </View>
-
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Application</Text>
-            </View>
-            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <InfoRow label="Devise" value="FCFA" />
-              <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-              <InfoRow label="Stockage" value={user ? "Telephone + compte" : "Telephone"} />
-              <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-              <InfoRow label="Version" value="1.0.0" />
-            </View>
-          </View>
+          ) : null}
         </ScrollView>
+
+        <Modal
+          visible={photoModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setPhotoModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.photoSheet, { backgroundColor: colors.background, paddingBottom: bottomPad + 14 }]}> 
+              <View style={styles.photoSheetHeader}>
+                <View>
+                  <Text style={[styles.photoSheetTitle, { color: colors.text }]}>Photos produits</Text>
+                  <Text style={[styles.photoSheetHint, { color: colors.mutedForeground }]}>
+                    {selectedPhotoUris.length > 0 ? `${selectedPhotoUris.length} selectionnee${selectedPhotoUris.length > 1 ? "s" : ""}` : `${photoFiles.length} photo${photoFiles.length > 1 ? "s" : ""} locale${photoFiles.length > 1 ? "s" : ""}`}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.iconBtn, { backgroundColor: colors.muted }]}
+                  onPress={() => setPhotoModalVisible(false)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fermer les photos produits"
+                >
+                  <Feather name="x" size={22} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              {photoFiles.length === 0 ? (
+                <View style={[styles.emptyPhotos, { borderColor: colors.border, backgroundColor: colors.card }]}> 
+                  <Feather name="image" size={28} color={colors.mutedForeground} />
+                  <Text style={[styles.emptyPhotosTitle, { color: colors.text }]}>Aucune photo locale</Text>
+                  <Text style={[styles.emptyPhotosText, { color: colors.mutedForeground }]}>Les images ajoutees aux produits apparaitront ici.</Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.photoGrid}>
+                  {photoFiles.map(file => {
+                    const selected = selectedPhotoUris.includes(file.uri);
+                    return (
+                      <TouchableOpacity
+                        key={file.uri}
+                        style={[styles.photoTile, { backgroundColor: colors.card, borderColor: selected ? colors.primary : colors.border }]}
+                        onPress={() => togglePhotoSelection(file.uri)}
+                        activeOpacity={0.85}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={file.isUsed ? "Photo utilisee par un produit" : "Photo inutilisee"}
+                        accessibilityState={{ checked: selected }}
+                      >
+                        <Image source={{ uri: file.uri }} style={styles.photoThumb} resizeMode="cover" />
+                        <View style={[styles.photoCheck, { backgroundColor: selected ? colors.primary : colors.background, borderColor: selected ? colors.primary : colors.border }]}> 
+                          {selected ? <Feather name="check" size={14} color="#fff" /> : null}
+                        </View>
+                        <View style={styles.photoMeta}>
+                          <Text style={[styles.photoBadge, { color: file.isUsed ? colors.primary : colors.warning }]}>{file.isUsed ? "Utilisee" : "Inutilisee"}</Text>
+                          <Text style={[styles.photoSize, { color: colors.mutedForeground }]}>{formatProductImagesSize(file.size)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              <TouchableOpacity
+                style={[styles.logoutBtn, { borderColor: colors.destructive + "45", backgroundColor: colors.destructive + "10" }, (photoBusy || selectedPhotoUris.length === 0) && { opacity: 0.55 }]}
+                onPress={handleDeleteSelectedPhotos}
+                disabled={photoBusy || selectedPhotoUris.length === 0}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Supprimer les photos selectionnees"
+                accessibilityState={{ disabled: photoBusy || selectedPhotoUris.length === 0, busy: photoBusy }}
+              >
+                {photoBusy ? <ActivityIndicator color={colors.destructive} /> : <Feather name="trash" size={18} color={colors.destructive} />}
+                {!photoBusy && <Text style={[styles.logoutBtnText, { color: colors.destructive }]}>Supprimer la selection</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </KeyboardAvoidingView>
   );
 
-  function InfoRow({ label, value }: { label: string; value: string }) {
+  function InfoRow({ icon, label, value, helper }: { icon: keyof typeof Feather.glyphMap; label: string; value: string; helper: string }) {
     return (
       <View style={styles.infoRow}>
-        <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>{label}</Text>
+        <View style={[styles.infoIcon, { backgroundColor: colors.primary + "12" }]}>
+          <Feather name={icon} size={17} color={colors.primary} />
+        </View>
+        <View style={styles.infoText}>
+          <Text style={[styles.infoLabel, { color: colors.text }]}>{label}</Text>
+          <Text style={[styles.infoHelper, { color: colors.mutedForeground }]}>{helper}</Text>
+        </View>
         <Text style={[styles.infoValue, { color: colors.text }]}>{value}</Text>
       </View>
     );
@@ -502,27 +776,30 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, gap: 12 },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   title: { flex: 1, fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700", textAlign: "center" },
   body: { padding: 16, gap: 16 },
-  brandCard: { borderRadius: 22, padding: 18, gap: 18, overflow: "hidden" },
-  brandMain: { flexDirection: "row", alignItems: "center", gap: 13 },
-  brandIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
-  brandText: { flex: 1, gap: 2 },
-  brandName: { color: "#FFFFFF", fontSize: 22, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  brandSubtitle: { color: "rgba(255,255,255,0.78)", fontSize: 12, lineHeight: 17, fontFamily: "Inter_500Medium", fontWeight: "500" },
-  brandMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  brandPill: { minHeight: 31, borderRadius: 999, paddingHorizontal: 11, alignItems: "center", flexDirection: "row", gap: 7, backgroundColor: "rgba(255,255,255,0.13)" },
-  brandPillText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  quickGrid: { flexDirection: "row", gap: 10 },
-  quickTile: { flex: 1, minHeight: 108, borderRadius: 16, borderWidth: 1, padding: 13, gap: 7 },
-  quickIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 3 },
-  quickLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", fontWeight: "600", textTransform: "uppercase" },
-  quickValue: { fontSize: 13, lineHeight: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
   section: { gap: 10 },
   sectionHeader: { gap: 2, paddingHorizontal: 4 },
   sectionTitle: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "700", textTransform: "uppercase" },
   sectionHint: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  accountCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 15,
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  accountTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  accountIcon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  accountText: { flex: 1, gap: 3 },
+  accountTitle: { fontSize: 17, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  accountSubtitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_400Regular" },
+  accountActions: { gap: 10 },
   formCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 14 },
   field: { gap: 7 },
   label: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
@@ -532,6 +809,7 @@ const styles = StyleSheet.create({
   saveBtn: { minHeight: 52, borderRadius: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 9 },
   saveBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700" },
   cloudCard: { borderRadius: 16, borderWidth: 1, padding: 15, gap: 12 },
+  dangerCard: { borderRadius: 16, borderWidth: 1, padding: 15, gap: 12 },
   cloudHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   cloudIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   cloudText: { flex: 1, gap: 2 },
@@ -545,9 +823,27 @@ const styles = StyleSheet.create({
   secondaryBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
   logoutBtn: { minHeight: 48, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 9 },
   logoutBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  infoCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  infoRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 15, paddingVertical: 14, gap: 12 },
-  infoLabel: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  infoValue: { flexShrink: 1, textAlign: "right", fontSize: 14, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  infoCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  infoRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 13, gap: 12, minHeight: 66 },
+  infoIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  infoText: { flex: 1, gap: 2 },
+  infoLabel: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  infoHelper: { fontSize: 12, lineHeight: 16, fontFamily: "Inter_400Regular" },
+  infoValue: { flexShrink: 1, textAlign: "right", fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   infoDivider: { height: 1 },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.35)" },
+  photoSheet: { maxHeight: "86%", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, gap: 14 },
+  photoSheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  photoSheetTitle: { fontSize: 21, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  photoSheetHint: { fontSize: 13, fontFamily: "Inter_500Medium", fontWeight: "500", marginTop: 3 },
+  emptyPhotos: { minHeight: 170, borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", padding: 18, gap: 8 },
+  emptyPhotosTitle: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  emptyPhotosText: { fontSize: 13, textAlign: "center", lineHeight: 18, fontFamily: "Inter_400Regular" },
+  photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingBottom: 6 },
+  photoTile: { width: "48%", borderWidth: 1, borderRadius: 16, padding: 8, gap: 8, position: "relative" },
+  photoThumb: { width: "100%", aspectRatio: 1, borderRadius: 12, backgroundColor: "#E5E7EB" },
+  photoCheck: { position: "absolute", top: 14, right: 14, width: 26, height: 26, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  photoMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  photoBadge: { flexShrink: 1, fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  photoSize: { fontSize: 12, fontFamily: "Inter_500Medium", fontWeight: "500" },
 });

@@ -74,6 +74,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Accueil",
+          tabBarAccessibilityLabel: "Accueil",
           tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
         }}
       />
@@ -81,6 +82,7 @@ export default function TabLayout() {
         name="products"
         options={{
           title: "Produits",
+          tabBarAccessibilityLabel: "Produits",
           tabBarIcon: ({ color }) => <Feather name="package" size={22} color={color} />,
         }}
       />
@@ -88,6 +90,7 @@ export default function TabLayout() {
         name="sale"
         options={{
           title: "",
+          tabBarAccessibilityLabel: "Ouvrir la caisse",
           tabBarLabel: () => null,
           tabBarIcon: ({ color }) => (
             <View style={[styles.saleIconBox, isWeb && styles.saleIconBoxWeb, { backgroundColor: colors.primary }]}>
@@ -100,6 +103,7 @@ export default function TabLayout() {
         name="debts"
         options={{
           title: "Dettes",
+          tabBarAccessibilityLabel: "Dettes clients",
           tabBarIcon: ({ color }) => <Feather name="users" size={22} color={color} />,
         }}
       />
@@ -107,6 +111,7 @@ export default function TabLayout() {
         name="history"
         options={{
           title: "Historique",
+          tabBarAccessibilityLabel: "Historique des ventes",
           tabBarIcon: ({ color }) => <Feather name="file-text" size={22} color={color} />,
         }}
       />

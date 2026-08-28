@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -24,8 +24,6 @@ export default function ProductsScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const lowStockCount = products.filter(product => product.stock <= product.alertThreshold).length;
-  const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
 
   const filtered = useMemo(() => {
     return products.filter(product => {
@@ -46,57 +44,28 @@ export default function ProductsScreen() {
   }, [filter, products, search]);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}> 
+      <View style={[styles.header, { paddingTop: topPad + 14, backgroundColor: colors.background, borderBottomColor: colors.border }]}> 
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
+            <Text style={[styles.kicker, { color: colors.primary }]}>Catalogue</Text>
             <Text style={[styles.title, { color: colors.text }]}>Produits</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}> 
               {products.length} produit{products.length > 1 ? "s" : ""} actif{products.length > 1 ? "s" : ""}
             </Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={[styles.inventoryBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/inventory")}
-              activeOpacity={0.85}
-            >
-              <Feather name="clipboard" size={19} color={colors.info} />
-              <Text style={[styles.inventoryBtnText, { color: colors.info }]}>Inventaire</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/product/scan")}
-              activeOpacity={0.85}
-            >
-              <Feather name="camera" size={19} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.addBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
-              onPress={() => router.push("/product/add")}
-              activeOpacity={0.85}
-            >
-              <Feather name="plus" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.stockSummary}>
-          <View style={[styles.summaryItem, { backgroundColor: colors.primary + "12" }]}>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>{totalStock}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.primary }]}>stock total</Text>
-          </View>
           <TouchableOpacity
-            style={[styles.summaryItem, { backgroundColor: lowStockCount > 0 ? colors.warning + "14" : colors.success + "12" }]}
-            onPress={() => setFilter("Stock faible")}
-            activeOpacity={0.8}
+            style={[styles.addBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
+            onPress={() => router.push("/product/add")}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un produit"
           >
-            <Text style={[styles.summaryValue, { color: lowStockCount > 0 ? colors.warning : colors.success }]}>{lowStockCount}</Text>
-            <Text style={[styles.summaryLabel, { color: lowStockCount > 0 ? colors.warning : colors.success }]}>stock faible</Text>
+            <Feather name="plus" size={18} color="#fff" />
+            <Text style={styles.addBtnText}>Nouveau</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}> 
           <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -104,15 +73,54 @@ export default function ProductsScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
+            autoCorrect={false}
+            returnKeyType="search"
           />
           {search ? (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Feather name="x" size={16} color={colors.mutedForeground} />
+            <TouchableOpacity
+              style={styles.clearSearchBtn}
+              onPress={() => setSearch("")}
+              accessibilityRole="button"
+              accessibilityLabel="Effacer la recherche"
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           ) : null}
         </View>
+        <View style={styles.utilityRow}>
+          <TouchableOpacity
+            style={[styles.utilityBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push("/product/scan")}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Scanner un produit pour ajouter du stock"
+          >
+            <View style={[styles.utilityIcon, { backgroundColor: colors.primary + "12" }]}> 
+              <Feather name="camera" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.utilityCopy}>
+              <Text style={[styles.utilityText, { color: colors.text }]}>Scanner</Text>
+              <Text style={[styles.utilityHint, { color: colors.mutedForeground }]}>code-barres</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.utilityBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push("/inventory")}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir l'inventaire rapide"
+          >
+            <View style={[styles.utilityIcon, { backgroundColor: colors.info + "12" }]}> 
+              <Feather name="clipboard" size={18} color={colors.info} />
+            </View>
+            <View style={styles.utilityCopy}>
+              <Text style={[styles.utilityText, { color: colors.text }]}>Inventaire</Text>
+              <Text style={[styles.utilityHint, { color: colors.mutedForeground }]}>comptage</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>
           {FILTERS.map(item => (
             <TouchableOpacity
               key={item}
@@ -122,6 +130,9 @@ export default function ProductsScreen() {
               ]}
               onPress={() => setFilter(item)}
               activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter === item }}
+              accessibilityLabel={"Filtrer par " + item}
             >
               <Text style={[styles.catBtnText, { color: filter === item ? "#fff" : colors.mutedForeground }]}>{item}</Text>
             </TouchableOpacity>
@@ -129,37 +140,73 @@ export default function ProductsScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView
+      <FlatList
         style={styles.list}
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 90 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.resultRow}>
-          <Text style={[styles.resultText, { color: colors.mutedForeground }]}>
-            {filtered.length} resultat{filtered.length > 1 ? "s" : ""}
-          </Text>
-        </View>
-
-        {isLoading ? (
-          <SkeletonCard count={6} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon="package"
-            title="Aucun produit"
-            subtitle={search ? "Aucun resultat pour cette recherche" : "Ajoutez votre premier produit"}
-            actionLabel={search ? undefined : "Ajouter un produit"}
-            onAction={search ? undefined : () => router.push("/product/add")}
+        data={isLoading ? [] : filtered}
+        keyExtractor={product => product.id}
+        renderItem={({ item: product }) => (
+          <ProductCard
+            product={product}
+            onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })}
           />
-        ) : (
-          filtered.map(product => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })}
-            />
-          ))
         )}
-      </ScrollView>
+        ListHeaderComponent={
+          !isLoading && filtered.length > 0 ? (
+            <View style={styles.resultRow}>
+              <Text style={[styles.resultText, { color: colors.text }]}> 
+                {filtered.length} resultat{filtered.length > 1 ? "s" : ""}
+              </Text>
+              {search || filter !== "Tous" ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearch("");
+                    setFilter("Tous");
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reinitialiser les filtres"
+                >
+                  <Text style={[styles.resetText, { color: colors.primary }]}>Reinitialiser</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <SkeletonCard count={6} />
+          ) : (
+            <EmptyState
+              icon={search || filter !== "Tous" ? "search" : "package"}
+              title={search || filter !== "Tous" ? "Aucun resultat" : "Aucun produit"}
+              subtitle={
+                search || filter !== "Tous"
+                  ? "Modifiez la recherche ou choisissez Tous"
+                  : "Ajoutez votre premier produit pour commencer a vendre"
+              }
+              actionLabel={search || filter !== "Tous" ? "Reinitialiser" : "Ajouter un produit"}
+              onAction={
+                search || filter !== "Tous"
+                  ? () => {
+                      setSearch("");
+                      setFilter("Tous");
+                    }
+                  : () => router.push("/product/add")
+              }
+            />
+          )
+        }
+        contentContainerStyle={[
+          styles.listContent,
+          !isLoading && filtered.length === 0 ? styles.emptyListContent : null,
+          { paddingBottom: bottomPad + 90 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+      />
     </View>
   );
 }
@@ -173,64 +220,67 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  headerCopy: { flex: 1 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 9 },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  subtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerCopy: { flex: 1, gap: 1 },
+  kicker: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "800", textTransform: "uppercase" },
+  title: { fontSize: 29, lineHeight: 34, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  subtitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_400Regular" },
   addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.24,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inventoryBtn: {
-    height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    minWidth: 104,
+    height: 48,
+    borderRadius: 15,
+    paddingHorizontal: 13,
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 7,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  inventoryBtnText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  stockSummary: { flexDirection: "row", gap: 10 },
-  summaryItem: { flex: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, gap: 2 },
-  summaryValue: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  summaryLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  addBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "800" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 15,
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 7,
     gap: 10,
   },
-  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  searchInput: { flex: 1, minHeight: 44, fontSize: 15, fontFamily: "Inter_400Regular" },
+  clearSearchBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -10 },
+  utilityRow: { flexDirection: "row", gap: 10 },
+  utilityBtn: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 15,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  utilityIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  utilityCopy: { flex: 1, minWidth: 0 },
+  utilityText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  utilityHint: { fontSize: 11, fontFamily: "Inter_400Regular" },
   catScroll: { flexGrow: 0 },
+  catContent: { paddingRight: 2 },
   catBtn: {
+    minHeight: 38,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
     borderWidth: 1,
     marginRight: 8,
+    justifyContent: "center",
   },
-  catBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  catBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   list: { flex: 1 },
-  resultRow: { marginBottom: 10 },
-  resultText: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  listContent: { padding: 16, paddingTop: 12 },
+  emptyListContent: { flexGrow: 1 },
+  resultRow: { marginBottom: 11, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  resultText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  resetText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "800" },
 });

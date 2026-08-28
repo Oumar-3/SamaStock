@@ -20,13 +20,17 @@ export async function enableOfflineModeAsync() {
   ]);
 }
 
+export async function createLocalMainShopForOfflineAsync(name: string, ownerName: string) {
+  return createLocalMainShopForCloudUserAsync("offline", name, ownerName);
+}
+
 export async function disableOfflineModeAsync() {
   await AsyncStorage.removeItem(OFFLINE_MODE_KEY);
 }
 
 export async function prepareLocalDataForCloudUserAsync(userId: string) {
   const previousOwnerId = await AsyncStorage.getItem(ACTIVE_OWNER_KEY);
-  if (previousOwnerId !== userId) {
+  if (previousOwnerId && previousOwnerId !== userId) {
     await clearAllLocalDataAsync();
   }
   await disableOfflineModeAsync();
@@ -49,20 +53,25 @@ export async function createLocalMainShopForCloudUserAsync(userId: string, name:
   const db = await getDatabaseAsync();
   const now = new Date().toISOString();
   const shopId = `${userId}:main`;
-  await db.runAsync(
-    `INSERT INTO shops (
-      id, name, owner_name, phone, address, is_active, created_at, updated_at
-    ) VALUES (?, ?, ?, '', '', 1, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      owner_name = excluded.owner_name,
-      is_active = 1,
-      updated_at = excluded.updated_at`,
-    shopId,
-    name.trim(),
-    ownerName.trim(),
-    now,
-    now,
-  );
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("UPDATE shops SET is_active = 0 WHERE id != ?", shopId);
+    await db.runAsync(
+      `INSERT INTO shops (
+        id, name, owner_name, phone, address, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, '', '', 1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        owner_name = excluded.owner_name,
+        is_active = 1,
+        updated_at = excluded.updated_at`,
+      shopId,
+      name.trim(),
+      ownerName.trim(),
+      now,
+      now,
+    );
+  });
+
   return shopId;
 }

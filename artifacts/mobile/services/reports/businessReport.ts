@@ -1,7 +1,7 @@
 import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import type { DebtWithClient, ProductRecord, SaleRecord, ShopProfile } from "@/models";
+import { sharePdfAsync } from "@/services/reports/pdfShare";
 
 export type BusinessReportPeriod = "today" | "month";
 
@@ -178,12 +178,7 @@ export async function shareBusinessReportPdf(input: BusinessReportInput) {
   });
 
   const title = input.period === "today" ? "Rapport SamaStock du jour" : "Rapport SamaStock du mois";
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(result.uri, {
-      mimeType: "application/pdf",
-      dialogTitle: title,
-      UTI: "com.adobe.pdf",
-    });
+  if (await sharePdfAsync(result.uri, { dialogTitle: title })) {
     return;
   }
 

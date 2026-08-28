@@ -2,7 +2,7 @@
   "expo": {
     "name": "SamaStock",
     "slug": "samastock",
-    "version": "1.0.7",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo1.png",
     "scheme": "samastock",
@@ -18,13 +18,11 @@
     },
     "android": {
       "package": "com.samastock.app",
-      "versionCode": 8,
+      "versionCode": 100,
       "permissions": [
         "android.permission.INTERNET",
         "CAMERA",
-        "POST_NOTIFICATIONS",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {

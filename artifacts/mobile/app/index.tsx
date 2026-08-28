@@ -8,7 +8,7 @@ import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useShopProfile } from "@/context/ShopProfileContext";
 import { useColors } from "@/hooks/useColors";
-import { clearCloudUserLocalDataAsync, getActiveCloudOwnerIdAsync, isOfflineModeAsync, prepareLocalDataForCloudUserAsync } from "@/services/localAccountData";
+import { getActiveCloudOwnerIdAsync, isOfflineModeAsync, prepareLocalDataForCloudUserAsync } from "@/services/localAccountData";
 import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
 export default function Index() {
@@ -53,7 +53,6 @@ export default function Index() {
           if (ownerId) {
             setOfflineMode(false);
             router.replace("/intro");
-            await clearCloudUserLocalDataAsync();
             await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
             return;
           }

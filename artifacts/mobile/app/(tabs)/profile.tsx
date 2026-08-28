@@ -64,7 +64,7 @@ export default function ProfileScreen() {
 
   async function handleSync() {
     if (!isConfigured) {
-      Alert.alert("Supabase non configuré", "Créez artifacts/mobile/.env avec l'URL et la publishable key Supabase.");
+      Alert.alert("Supabase non configurÃ©", "CrÃ©ez artifacts/mobile/.env avec l'URL et la publishable key Supabase.");
       return;
     }
     if (!user) {
@@ -78,7 +78,7 @@ export default function ProfileScreen() {
       const pushed = results.reduce((sum, result) => sum + result.pushed, 0);
       const pulled = results.reduce((sum, result) => sum + result.pulled, 0);
       const conflicts = results.reduce((sum, result) => sum + result.conflicts, 0);
-      Alert.alert("Synchronisation terminée", `Envoyés: ${pushed}\nRécupérés: ${pulled}\nConflits: ${conflicts}`);
+      Alert.alert("Synchronisation terminÃ©e", `EnvoyÃ©s: ${pushed}\nRÃ©cupÃ©rÃ©s: ${pulled}\nConflits: ${conflicts}`);
     } catch (error) {
       Alert.alert("Sync impossible", error instanceof Error ? error.message : "Une erreur est survenue.");
     } finally {
@@ -118,7 +118,7 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Ma boutique</Text>
         <Row icon="shopping-bag" label="Chiffre d'affaires" value={money(totalRevenue)} />
         <Row icon="credit-card" label="Dettes ouvertes" value={money(totalOpenDebt)} />
-        <Row icon="settings" label="Paramètres boutique" onPress={() => router.push("/settings")} />
+        <Row icon="settings" label="ParamÃ¨tres boutique" onPress={() => router.push("/settings")} />
         <Row icon="bell" label="Notifications stock" onPress={() => router.push("/notifications")} />
       </View>
 

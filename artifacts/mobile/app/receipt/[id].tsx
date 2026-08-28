@@ -3,7 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Print from "expo-print";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -38,11 +38,11 @@ function shortDate(value: string) {
 }
 
 function paymentLabel(sale: SaleRecord) {
-  return sale.paymentType === "credit" ? "Vente a credit" : "Paiement cash";
+  return sale.paymentType === "credit" ? "Vente a credit" : "Paiement comptant";
 }
 
 function paymentHint(sale: SaleRecord) {
-  return sale.paymentType === "credit" ? "Montant a suivre dans les dettes client" : "Montant encaisse";
+  return sale.paymentType === "credit" ? "Enregistre dans les dettes client" : "Montant encaisse";
 }
 
 function initials(name: string) {
@@ -224,8 +224,6 @@ export default function ReceiptDetailScreen() {
     };
   }, [getSale, id, listSaleItems]);
 
-  const itemCount = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
-  const averageBasket = itemCount > 0 && sale ? sale.total / itemCount : 0;
 
   async function copyReceipt() {
     if (!sale) return;
@@ -292,7 +290,7 @@ export default function ReceiptDetailScreen() {
     return (
       <View style={[styles.root, styles.center, { backgroundColor: colors.background }]}>
         <Text style={[styles.notFound, { color: colors.mutedForeground }]}>Recu introuvable</Text>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Retour">
           <Text style={[styles.back, { color: colors.primary }]}>Retour</Text>
         </TouchableOpacity>
       </View>
@@ -304,14 +302,23 @@ export default function ReceiptDetailScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.topBar, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.iconBtn, { backgroundColor: colors.muted }]}>
+      <View style={[styles.topBar, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}> 
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+        >
           <Feather name="arrow-left" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>Recu {sale.receiptNumber}</Text>
-        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: colors.muted }]} onPress={sharePdf} disabled={busyAction !== null}>
-          {busyAction === "pdf" ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="share-2" size={19} color={colors.primary} />}
-        </TouchableOpacity>
+        <View style={styles.headerTitleBlock}>
+          <Text style={[styles.headerKicker, { color: colors.primary }]}>Recu de vente</Text>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{sale.receiptNumber}</Text>
+        </View>
+        <View style={[styles.statusPill, { backgroundColor: paymentColor + "14" }]}> 
+          <Feather name={isCredit ? "clock" : "check-circle"} size={14} color={paymentColor} />
+          <Text style={[styles.statusPillText, { color: paymentColor }]}>{isCredit ? "Credit" : "Paye"}</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: bottomPad + 24 }]} showsVerticalScrollIndicator={false}>
@@ -353,21 +360,6 @@ export default function ReceiptDetailScreen() {
               <Text style={[styles.paymentAmount, { color: paymentColor }]}>{money(sale.total)}</Text>
             </View>
 
-            <View style={styles.metricsRow}>
-              <View style={[styles.metricBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>Articles</Text>
-                <Text style={[styles.metricValue, { color: colors.text }]}>{itemCount}</Text>
-              </View>
-              <View style={[styles.metricBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>Lignes</Text>
-                <Text style={[styles.metricValue, { color: colors.text }]}>{items.length}</Text>
-              </View>
-              <View style={[styles.metricBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>Moyen</Text>
-                <Text style={[styles.metricValue, { color: colors.text }]}>{money(averageBasket)}</Text>
-              </View>
-            </View>
-
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Articles vendus</Text>
               <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{items.length} ligne{items.length > 1 ? "s" : ""}</Text>
@@ -382,7 +374,6 @@ export default function ReceiptDetailScreen() {
                       {item.quantity} x {money(item.sellPrice)}
                     </Text>
                   </View>
-                  <Text style={[styles.itemQty, { color: colors.mutedForeground }]}>x{item.quantity}</Text>
                   <Text style={[styles.itemTotal, { color: colors.text }]}>{money(item.lineTotal)}</Text>
                 </View>
               ))}
@@ -393,20 +384,29 @@ export default function ReceiptDetailScreen() {
                 <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
                 <Text style={[styles.totalValue, { color: colors.text }]}>{money(sale.total)}</Text>
               </View>
-              <View style={styles.totalRow}>
-                <Text style={[styles.subTotalLabel, { color: colors.mutedForeground }]}>{isCredit ? "A payer" : "Encaisse"}</Text>
-                <Text style={[styles.subTotalValue, { color: paymentColor }]}>{money(sale.total)}</Text>
-              </View>
             </View>
 
             <Text style={[styles.thanks, { color: colors.mutedForeground }]}>Merci pour votre confiance.</Text>
           </View>
         </View>
 
-        <View style={styles.actionsGrid}>
-          <ActionButton colors={colors} icon="copy" label="Copier" loading={busyAction === "copy"} disabled={busyAction !== null} onPress={copyReceipt} />
-          <ActionButton colors={colors} icon="share-2" label="PDF" loading={busyAction === "pdf"} disabled={busyAction !== null} onPress={sharePdf} />
-          <ActionButton colors={colors} icon="printer" label="Imprimer" loading={busyAction === "print"} disabled={busyAction !== null} onPress={printReceipt} />
+        <View style={[styles.actionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <TouchableOpacity
+            style={[styles.primaryAction, { backgroundColor: colors.primary }, busyAction !== null && { opacity: 0.65 }]}
+            onPress={sharePdf}
+            disabled={busyAction !== null}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+            accessibilityLabel="Partager le recu en PDF"
+            accessibilityState={{ disabled: busyAction !== null, busy: busyAction === "pdf" }}
+          >
+            {busyAction === "pdf" ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="share-2" size={18} color="#fff" />}
+            <Text style={styles.primaryActionText}>Partager le PDF</Text>
+          </TouchableOpacity>
+          <View style={styles.secondaryActions}>
+            <ActionButton colors={colors} icon="copy" label="Copier" accessibilityLabel="Copier le recu en texte" loading={busyAction === "copy"} disabled={busyAction !== null} onPress={copyReceipt} />
+            <ActionButton colors={colors} icon="printer" label="Imprimer" accessibilityLabel="Imprimer le recu" loading={busyAction === "print"} disabled={busyAction !== null} onPress={printReceipt} />
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -417,6 +417,7 @@ function ActionButton(props: {
   colors: ReturnType<typeof useColors>;
   icon: keyof typeof Feather.glyphMap;
   label: string;
+  accessibilityLabel: string;
   loading?: boolean;
   disabled?: boolean;
   onPress: () => void;
@@ -427,6 +428,9 @@ function ActionButton(props: {
       onPress={props.onPress}
       disabled={props.disabled}
       activeOpacity={0.78}
+      accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel}
+      accessibilityState={{ disabled: props.disabled, busy: props.loading }}
     >
       {props.loading ? <ActivityIndicator size="small" color={props.colors.primary} /> : <Feather name={props.icon} size={18} color={props.colors.primary} />}
       <Text style={[styles.actionText, { color: props.colors.text }]}>{props.label}</Text>
@@ -438,8 +442,12 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center" },
   topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, gap: 12 },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  iconBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  headerTitleBlock: { flex: 1, gap: 1 },
+  headerKicker: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "800", textTransform: "uppercase" },
+  title: { fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  statusPill: { minHeight: 36, borderRadius: 999, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  statusPillText: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "800" },
   body: { padding: 16, gap: 14 },
   receiptCard: {
     borderWidth: 1,
@@ -469,10 +477,6 @@ const styles = StyleSheet.create({
   paymentTitle: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
   paymentSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular" },
   paymentAmount: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  metricsRow: { flexDirection: "row", gap: 8 },
-  metricBox: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 10, gap: 3 },
-  metricLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold", fontWeight: "600", textTransform: "uppercase" },
-  metricValue: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700" },
   sectionHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
@@ -482,17 +486,17 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, gap: 3 },
   itemName: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
   itemMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  itemQty: { width: 34, textAlign: "center", fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
   itemTotal: { minWidth: 88, textAlign: "right", fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   totalBox: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 9 },
   totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   totalLabel: { fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
   totalValue: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  subTotalLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  subTotalValue: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
   thanks: { textAlign: "center", fontSize: 12, fontFamily: "Inter_500Medium", fontWeight: "500", paddingTop: 2 },
-  actionsGrid: { flexDirection: "row", gap: 10 },
-  actionBtn: { flex: 1, minHeight: 50, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", gap: 5 },
+  actionPanel: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
+  primaryAction: { minHeight: 52, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  primaryActionText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  secondaryActions: { flexDirection: "row", gap: 10 },
+  actionBtn: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
   actionText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
   notFound: { fontSize: 16, fontFamily: "Inter_400Regular", marginBottom: 12 },
   back: { fontSize: 15, fontFamily: "Inter_600SemiBold", fontWeight: "600" },

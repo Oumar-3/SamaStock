@@ -11,9 +11,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AuthInput } from "@/components/AuthInput";
+import { GoogleLogo } from "@/components/GoogleLogo";
 import { SamaStockLogo } from "@/components/SamaStockLogo";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
@@ -22,13 +25,14 @@ import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useShopProfile } from "@/context/ShopProfileContext";
 import { getShopProfileAsync } from "@/database";
-import { createLocalMainShopForCloudUserAsync, resetLocalDataForCloudUserAsync } from "@/services/localAccountData";
+import { createLocalMainShopForCloudUserAsync, prepareLocalDataForCloudUserAsync } from "@/services/localAccountData";
 import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ email?: string }>();
   const { login, loginWithGoogle } = useAuth();
   const { refreshProfile, saveProfile } = useShopProfile();
@@ -42,6 +46,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
+  const passwordRef = useRef<TextInput>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -53,7 +58,7 @@ export default function LoginScreen() {
   }, [params.email]);
 
   async function completeCloudLogin(nextUser: Awaited<ReturnType<typeof login>>) {
-    await resetLocalDataForCloudUserAsync(nextUser.id);
+    await prepareLocalDataForCloudUserAsync(nextUser.id);
     await createLocalMainShopForCloudUserAsync(
       nextUser.id,
       nextUser.shopName || "Ma boutique",
@@ -109,30 +114,39 @@ export default function LoginScreen() {
   }
 
   const keyboardBottomSpace = bottomPad + 180;
+  const shellWidth = Platform.OS === "web" ? Math.min(Math.max(width - 32, 320), 460) : undefined;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
         style={[styles.root, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: keyboardBottomSpace }}
+        contentContainerStyle={[styles.content, { paddingBottom: keyboardBottomSpace }]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <View style={[styles.shell, shellWidth ? { width: shellWidth } : null]}>
+        <View style={[styles.topBar, { paddingTop: topPad + 10 }]}>
+          <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.muted }]} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Retour">
+            <Feather name="arrow-left" size={21} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
         <LinearGradient
-          colors={[colors.primary + "25", colors.background]}
-          style={[styles.header, { paddingTop: topPad + 40 }]}
+          colors={[colors.background, colors.primary + "18", colors.background]}
+          style={styles.header}
         >
-          <View style={[styles.logoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SamaStockLogo size={62} />
+          <View style={[styles.logoBox, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.primary }]}>
+            <SamaStockLogo size={56} />
           </View>
-          <Text style={[styles.appName, { color: colors.text }]}>SamaStock</Text>
-          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>Gérez votre boutique</Text>
+          <Text style={[styles.eyebrow, { color: colors.primary }]}>Compte boutique</Text>
+            <Text style={[styles.appName, { color: colors.text }]}>SamaStock</Text>
+          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>Retrouvez votre boutique et vos donnees sauvegardees.</Text>
         </LinearGradient>
 
         <View style={styles.form}>
-          <Text style={[styles.title, { color: colors.text }]}>Connexion</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Bon retour parmi nous</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Bon retour</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Connectez-vous pour continuer.</Text>
 
           {error ? (
             <View style={[styles.errorBox, { backgroundColor: colors.destructive + "15" }]}>
@@ -142,35 +156,43 @@ export default function LoginScreen() {
           ) : null}
 
           <View style={styles.fields}>
-            <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="mail" size={18} color={colors.mutedForeground} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Email"
-                placeholderTextColor={colors.mutedForeground}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                returnKeyType="next"
-              />
-            </View>
-            <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="lock" size={18} color={colors.mutedForeground} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Mot de passe"
-                placeholderTextColor={colors.mutedForeground}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPass}
-                returnKeyType="done"
-                onSubmitEditing={handleLogin}
-              />
-              <TouchableOpacity onPress={() => setShowPass(s => !s)}>
-                <Feather name={showPass ? "eye-off" : "eye"} size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
+            <AuthInput
+              label="Email"
+              icon="mail"
+              placeholder="nom@exemple.com"
+              value={email}
+              onChangeText={value => {
+                setEmail(value);
+                setError("");
+              }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+            />
+            <AuthInput
+              ref={passwordRef}
+              label="Mot de passe"
+              icon="lock"
+              placeholder="Votre mot de passe"
+              value={password}
+              onChangeText={value => {
+                setPassword(value);
+                setError("");
+              }}
+              secureTextEntry={!showPass}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              textContentType="password"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              passwordVisible={showPass}
+              onTogglePassword={() => setShowPass(value => !value)}
+            />
           </View>
 
           <TouchableOpacity
@@ -178,6 +200,8 @@ export default function LoginScreen() {
             onPress={handleLogin}
             disabled={loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Se connecter"
           >
             {loading ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -186,13 +210,21 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
+          <View style={styles.dividerRow}>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>ou</Text>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          </View>
+
           <TouchableOpacity
             style={[styles.googleBtn, { backgroundColor: colors.card, borderColor: colors.border }, loading && styles.btnDisabled]}
             onPress={handleGoogleLogin}
             disabled={loading}
             activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Continuer avec Google"
           >
-            <Feather name="chrome" size={18} color={colors.text} />
+            <GoogleLogo size={18} />
             <Text style={[styles.googleBtnText, { color: colors.text }]}>Continuer avec Google</Text>
           </TouchableOpacity>
 
@@ -200,9 +232,12 @@ export default function LoginScreen() {
             style={[styles.secondaryBtn, { borderColor: colors.border }]}
             onPress={() => router.push("/(auth)/register")}
             activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Creer un compte"
           >
-            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Créer un compte</Text>
+            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Creer un compte</Text>
           </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -211,19 +246,24 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  content: { flexGrow: 1, alignItems: "center" },
+  shell: { width: "100%" },
+  topBar: { paddingHorizontal: 22 },
+  backBtn: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   header: {
     alignItems: "center",
-    paddingBottom: 40,
+    paddingTop: 8,
+    paddingBottom: 24,
     paddingHorizontal: 24,
-    gap: 12,
+    gap: 8,
   },
   logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
+    width: 68,
+    height: 68,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 6,
     borderWidth: 1,
     shadowColor: "#00A86B",
     shadowOffset: { width: 0, height: 8 },
@@ -231,35 +271,27 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  appName: { fontSize: 28, fontWeight: "700", fontFamily: "Inter_700Bold" },
-  tagline: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  form: { paddingHorizontal: 24, paddingTop: 32, gap: 16 },
-  title: { fontSize: 24, fontWeight: "700", fontFamily: "Inter_700Bold" },
-  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginBottom: 8 },
+  eyebrow: { fontSize: 12, lineHeight: 16, fontWeight: "700", fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0 },
+  appName: { fontSize: 30, lineHeight: 36, fontWeight: "800", fontFamily: "Inter_700Bold" },
+  tagline: { maxWidth: 300, textAlign: "center", fontSize: 14, lineHeight: 20, fontFamily: "Inter_500Medium", fontWeight: "500" },
+  form: { paddingHorizontal: 24, paddingTop: 22, gap: 16 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: "800", fontFamily: "Inter_700Bold" },
+  subtitle: { fontSize: 15, lineHeight: 21, fontFamily: "Inter_400Regular", marginBottom: 6 },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 13,
   },
   errorText: { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1 },
   fields: { gap: 12 },
-  inputBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   btn: {
-    paddingVertical: 16,
-    borderRadius: 14,
+    minHeight: 54,
+    borderRadius: 15,
     alignItems: "center",
-    marginTop: 8,
+    justifyContent: "center",
+    marginTop: 6,
     shadowColor: "#00A86B",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -269,12 +301,16 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.7 },
   btnText: { fontSize: 16, fontWeight: "700", fontFamily: "Inter_700Bold", color: "#fff" },
   secondaryBtn: {
-    paddingVertical: 16,
-    borderRadius: 14,
+    minHeight: 52,
+    borderRadius: 15,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1.5,
   },
   secondaryBtnText: { fontSize: 15, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 2 },
+  divider: { flex: 1, height: 1 },
+  dividerText: { fontSize: 12, fontFamily: "Inter_500Medium", fontWeight: "500" },
   googleBtn: {
     minHeight: 52,
     borderRadius: 14,

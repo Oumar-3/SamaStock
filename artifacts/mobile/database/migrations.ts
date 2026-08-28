@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 8;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS shop_profile (
@@ -275,6 +275,22 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 `;
 
+const MIGRATION_7 = `
+ALTER TABLE products ADD COLUMN image_path TEXT;
+`;
+
+const MIGRATION_8 = `
+DROP INDEX IF EXISTS idx_products_shop_barcode_unique;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_shop_barcode_unique
+  ON products(shop_id, barcode)
+  WHERE barcode IS NOT NULL
+    AND barcode != ''
+    AND shop_id IS NOT NULL
+    AND is_archived = 0
+    AND deleted_at IS NULL;
+`;
+
 export async function runMigrationsAsync(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   const currentVersion = versionRow?.user_version ?? 0;
@@ -321,6 +337,20 @@ export async function runMigrationsAsync(db: SQLiteDatabase) {
     });
   }
 
+  if (currentVersion < 7) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATION_7);
+      await db.execAsync("PRAGMA user_version = 7;");
+    });
+  }
+
+
+  if (currentVersion < 8) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATION_8);
+      await db.execAsync("PRAGMA user_version = 8;");
+    });
+  }
   if (currentVersion > DATABASE_VERSION) {
     throw new Error(`Unsupported database version: ${currentVersion}`);
   }

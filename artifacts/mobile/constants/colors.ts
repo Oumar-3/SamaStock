@@ -66,11 +66,11 @@ const colors = {
     warning: "#F59E0B",
     info: "#60A5FA",
 
-    border: "#26362C",
-    input: "#26362C",
+    border: "#203026",
+    input: "#203026",
 
     tabBar: "#101812",
-    tabBarBorder: "#243329",
+    tabBarBorder: "#1E2D23",
   },
 
   radius: 16,

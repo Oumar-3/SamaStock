@@ -38,6 +38,8 @@ function ProductButton({ product, onAdd }: { product: ProductRecord; onAdd: () =
   const colors = useColors();
   const isOut = product.stock === 0;
   const isLow = product.stock <= product.alertThreshold;
+  const stockColor = isOut ? colors.destructive : isLow ? colors.warning : colors.success;
+  const stockText = isOut ? "Rupture" : isLow ? `Stock ${product.stock}` : `${product.stock} dispo`;
 
   return (
     <TouchableOpacity
@@ -45,30 +47,35 @@ function ProductButton({ product, onAdd }: { product: ProductRecord; onAdd: () =
       onPress={isOut ? undefined : onAdd}
       activeOpacity={0.75}
       disabled={isOut}
+      accessibilityRole="button"
+      accessibilityLabel={product.name + ", " + product.sellPrice.toLocaleString() + " francs, stock " + product.stock}
+      accessibilityHint={isOut ? "Produit en rupture de stock" : "Choisir la quantite a ajouter"}
+      accessibilityState={{ disabled: isOut }}
     >
-      <View style={[styles.addChip, { backgroundColor: isOut ? colors.muted : colors.primary }]}>
-        <Feather name={isOut ? "minus" : "plus"} size={14} color={isOut ? colors.mutedForeground : "#fff"} />
-      </View>
-      {product.imageUri ? (
-        <Image source={{ uri: product.imageUri }} style={styles.productImage} />
-      ) : (
-        <View style={[styles.productIconBox, { backgroundColor: colors.primary + "15" }]}>
-          <Feather name="package" size={20} color={colors.primary} />
+      <View style={styles.productMediaRow}>
+        {product.imageUri ? (
+          <Image source={{ uri: product.imageUri }} style={styles.productImage} />
+        ) : (
+          <View style={[styles.productIconBox, { backgroundColor: colors.primary + "15" }]}> 
+            <Feather name="package" size={21} color={colors.primary} />
+          </View>
+        )}
+        <View style={[styles.addChip, { backgroundColor: isOut ? colors.muted : colors.primary }]}>
+          <Feather name={isOut ? "minus" : "plus"} size={15} color={isOut ? colors.mutedForeground : "#fff"} />
         </View>
-      )}
+      </View>
       <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>
         {product.name}
       </Text>
       <View style={styles.productFooter}>
-        <Text style={[styles.productPrice, { color: colors.primary }]}>{product.sellPrice.toLocaleString()} F</Text>
-        <Text style={[styles.productStock, { color: isOut ? colors.destructive : isLow ? colors.warning : colors.mutedForeground }]}>
-          {isOut ? "Rupture" : `Stock ${product.stock}`}
-        </Text>
+        <Text style={[styles.productPrice, { color: colors.text }]}>{product.sellPrice.toLocaleString()} F</Text>
+        <View style={[styles.productStockPill, { backgroundColor: stockColor + "14" }]}> 
+          <Text style={[styles.productStock, { color: stockColor }]} numberOfLines={1}>{stockText}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
 }
-
 export default function SaleScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -193,7 +200,6 @@ export default function SaleScreen() {
     addToCart(selectedProduct, quantity);
     setSelectedProduct(null);
     setQuantityInput("1");
-    setShowCart(true);
   }
 
   function findProductFromCode(code: string) {
@@ -331,29 +337,57 @@ export default function SaleScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { paddingTop: topPad + 14, backgroundColor: colors.background, borderBottomColor: colors.border }]}> 
         <View style={styles.headerRow}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>Caisse</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.kicker, { color: colors.primary }]}>Mode caisse</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Vente rapide</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}> 
               {availableProducts} produits disponibles
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.scanBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
-            onPress={() => {
-              setUnknownScannedCode("");
-              setScanMessage("");
-              setScanLocked(false);
-              setShowScanner(true);
-            }}
-            activeOpacity={0.85}
-          >
-            <Feather name="camera" size={19} color="#fff" />
-          </TouchableOpacity>
         </View>
 
-        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.cashierPanel, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <View style={styles.cashierTopRow}>
+            <View style={styles.cashierCopy}>
+              <Text style={[styles.cashierLabel, { color: colors.mutedForeground }]}>Panier en cours</Text>
+              <Text style={[styles.cashierTotal, { color: colors.text }]}>{cartTotal.toLocaleString()} FCFA</Text>
+              <Text style={[styles.cashierHint, { color: colors.mutedForeground }]}> 
+                {cartCount > 0 ? `${cartCount} article${cartCount > 1 ? "s" : ""} pret${cartCount > 1 ? "s" : ""} a encaisser` : "Scannez ou touchez un produit"}
+              </Text>
+            </View>
+            <View style={[styles.cashierIcon, { backgroundColor: colors.primary + "14" }]}> 
+              <Feather name="shopping-cart" size={23} color={colors.primary} />
+            </View>
+          </View>
+          <View style={styles.cashierActions}>
+            <TouchableOpacity
+              style={[styles.cashierActionBtn, { backgroundColor: colors.primary }]}
+              onPress={() => (cartCount > 0 ? setShowCart(true) : setShowScanner(true))}
+              activeOpacity={0.84}
+              accessibilityRole="button"
+              accessibilityLabel={cartCount > 0 ? "Voir le panier" : "Scanner un produit"}
+            >
+              <Feather name={cartCount > 0 ? "shopping-bag" : "camera"} size={16} color="#fff" />
+              <Text style={styles.cashierActionText}>{cartCount > 0 ? "Voir panier" : "Scanner"}</Text>
+            </TouchableOpacity>
+            {cartCount > 0 ? (
+              <TouchableOpacity
+                style={[styles.cashierActionBtn, styles.cashierActionSecondary, { backgroundColor: colors.destructive + "12" }]}
+                onPress={cancelCart}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Annuler le panier"
+              >
+                <Feather name="trash-2" size={16} color={colors.destructive} />
+                <Text style={[styles.cashierActionText, { color: colors.destructive }]}>Annuler</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}> 
           <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -361,26 +395,43 @@ export default function SaleScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Rechercher un produit ou saisir un code-barres"
           />
           {search ? (
-            <TouchableOpacity onPress={handleManualCode} style={[styles.codeBtn, { backgroundColor: colors.primary + "12" }]}>
-              <Feather name="hash" size={16} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={styles.searchTools}>
+              <TouchableOpacity
+                onPress={() => setSearch("")}
+                style={[styles.codeBtn, { backgroundColor: colors.muted }]}
+                accessibilityRole="button"
+                accessibilityLabel="Effacer la recherche"
+              >
+                <Feather name="x" size={16} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleManualCode}
+                style={[styles.codeBtn, { backgroundColor: colors.primary + "12" }]}
+                accessibilityRole="button"
+                accessibilityLabel="Rechercher ce code-barres"
+              >
+                <Feather name="hash" size={16} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           ) : null}
         </View>
 
         <View style={styles.summaryRow}>
-          <View style={[styles.summaryPill, { backgroundColor: colors.primary + "12" }]}>
+          <View style={[styles.summaryPill, { backgroundColor: colors.primary + "12" }]}> 
             <Feather name="shopping-bag" size={14} color={colors.primary} />
             <Text style={[styles.summaryText, { color: colors.primary }]}>{cartCount} article{cartCount > 1 ? "s" : ""}</Text>
           </View>
-          <View style={[styles.summaryPill, { backgroundColor: colors.info + "12" }]}>
+          <View style={[styles.summaryPill, { backgroundColor: colors.info + "12" }]}> 
             <Feather name="box" size={14} color={colors.info} />
             <Text style={[styles.summaryText, { color: colors.info }]}>{filteredProducts.length} resultats</Text>
           </View>
         </View>
       </View>
-
       <FlatList
         data={filteredProducts}
         numColumns={2}
@@ -394,11 +445,17 @@ export default function SaleScreen() {
 
       {cartCount > 0 && (
         <View style={[styles.cartBar, { backgroundColor: colors.primary, shadowColor: colors.primary, paddingBottom: bottomPad + 8 }]}>
-          <TouchableOpacity style={styles.cartBarContent} onPress={() => setShowCart(true)} activeOpacity={0.9}>
+          <TouchableOpacity
+            style={styles.cartBarContent}
+            onPress={() => setShowCart(true)}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel={"Voir le panier, " + cartCount + " articles, total " + cartTotal.toLocaleString() + " francs"}
+          >
             <View style={styles.cartCount}>
               <Text style={styles.cartCountText}>{cartCount}</Text>
             </View>
-            <Text style={styles.cartBarText}>Panier</Text>
+            <Text style={styles.cartBarText}>Voir le panier</Text>
             <Text style={styles.cartBarTotal}>{cartTotal.toLocaleString()} FCFA</Text>
             <Feather name="chevron-up" size={18} color="#fff" />
           </TouchableOpacity>
@@ -414,12 +471,22 @@ export default function SaleScreen() {
             </View>
             <View style={styles.cartHeaderActions}>
               {cart.length > 0 ? (
-                <TouchableOpacity style={[styles.clearCartBtn, { backgroundColor: colors.destructive + "12" }]} onPress={cancelCart}>
+                <TouchableOpacity
+                  style={[styles.clearCartBtn, { backgroundColor: colors.destructive + "12" }]}
+                  onPress={cancelCart}
+                  accessibilityRole="button"
+                  accessibilityLabel="Vider le panier"
+                >
                   <Feather name="trash-2" size={17} color={colors.destructive} />
                   <Text style={[styles.clearCartText, { color: colors.destructive }]}>Vider</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setShowCart(false)}>
+              <TouchableOpacity
+                style={[styles.closeBtn, { backgroundColor: colors.muted }]}
+                onPress={() => setShowCart(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Fermer le panier"
+              >
                 <Feather name="x" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -431,15 +498,28 @@ export default function SaleScreen() {
                 <View style={styles.cartItemInfo}>
                   <Text style={[styles.cartItemName, { color: colors.text }]} numberOfLines={1}>{item.product.name}</Text>
                   <Text style={[styles.cartItemPrice, { color: colors.primary }]}>
-                    {item.product.sellPrice.toLocaleString()} FCFA x {item.quantity}
+                    {(item.product.sellPrice * item.quantity).toLocaleString()} FCFA
+                  </Text>
+                  <Text style={[styles.cartItemUnit, { color: colors.mutedForeground }]}>
+                    {item.product.sellPrice.toLocaleString()} F x {item.quantity}
                   </Text>
                 </View>
                 <View style={styles.qtyControls}>
-                  <TouchableOpacity style={[styles.qtyBtn, { backgroundColor: colors.muted }]} onPress={() => updateQty(item.product.id, item.quantity - 1)}>
+                  <TouchableOpacity
+                    style={[styles.qtyBtn, { backgroundColor: colors.muted }]}
+                    onPress={() => updateQty(item.product.id, item.quantity - 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={"Retirer une unite de " + item.product.name}
+                  >
                     <Feather name="minus" size={14} color={colors.text} />
                   </TouchableOpacity>
                   <Text style={[styles.qtyText, { color: colors.text }]}>{item.quantity}</Text>
-                  <TouchableOpacity style={[styles.qtyBtn, { backgroundColor: colors.muted }]} onPress={() => updateQty(item.product.id, item.quantity + 1)}>
+                  <TouchableOpacity
+                    style={[styles.qtyBtn, { backgroundColor: colors.muted }]}
+                    onPress={() => updateQty(item.product.id, item.quantity + 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={"Ajouter une unite de " + item.product.name}
+                  >
                     <Feather name="plus" size={14} color={colors.text} />
                   </TouchableOpacity>
                 </View>
@@ -484,10 +564,13 @@ export default function SaleScreen() {
                 onPress={showCreditForm ? confirmCreditSale : () => setShowCreditForm(true)}
                 disabled={confirmLoading}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={showCreditForm ? "Valider la vente a credit" : "Choisir une vente a credit"}
+                accessibilityState={{ disabled: confirmLoading, busy: confirmLoading }}
               >
                 <Feather name="credit-card" size={18} color={colors.primary} />
                 <Text style={[styles.creditBtnText, { color: colors.primary }]}>
-                  {showCreditForm ? "Valider dette" : "Credit"}
+                  {showCreditForm ? "Valider le credit" : "A credit"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -495,9 +578,12 @@ export default function SaleScreen() {
                 onPress={confirmSale}
                 disabled={confirmLoading}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Valider le paiement comptant"
+                accessibilityState={{ disabled: confirmLoading, busy: confirmLoading }}
               >
                 <Feather name="check-circle" size={20} color="#fff" />
-                <Text style={styles.confirmBtnText}>Cash</Text>
+                <Text style={styles.confirmBtnText}>Comptant</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -576,7 +662,12 @@ export default function SaleScreen() {
             </View>
             <View style={styles.cartHeaderActions}>
               {cartCount > 0 ? (
-                <TouchableOpacity style={[styles.scannerCartBtn, { backgroundColor: colors.primary + "12" }]} onPress={() => setShowCart(true)}>
+                <TouchableOpacity
+                  style={[styles.scannerCartBtn, { backgroundColor: colors.primary + "12" }]}
+                  onPress={openCartFromScanner}
+                  accessibilityRole="button"
+                  accessibilityLabel={"Voir le panier, " + cartCount + " articles"}
+                >
                   <Feather name="shopping-cart" size={17} color={colors.primary} />
                   <Text style={[styles.scannerCartText, { color: colors.primary }]}>{cartCount}</Text>
                 </TouchableOpacity>
@@ -758,19 +849,31 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, gap: 12 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  headerCopy: { flex: 1, gap: 2 },
+  kicker: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "800", textTransform: "uppercase" },
   title: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700" },
   subtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  scanBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
+  cashierPanel: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
+  cashierTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  cashierCopy: { flex: 1, gap: 3 },
+  cashierLabel: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "800", textTransform: "uppercase" },
+  cashierTotal: { fontSize: 27, lineHeight: 33, fontFamily: "Inter_700Bold", fontWeight: "800" },
+  cashierHint: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_400Regular" },
+  cashierIcon: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  cashierActions: { flexDirection: "row", gap: 10 },
+  cashierActionBtn: { flex: 1, minHeight: 46, borderRadius: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  cashierActionSecondary: { flex: 0.85 },
+  cashierActionText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "800" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -781,6 +884,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  searchTools: { flexDirection: "row", alignItems: "center", gap: 7 },
   codeBtn: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   summaryRow: { flexDirection: "row", gap: 8 },
   summaryPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
@@ -789,11 +893,11 @@ const styles = StyleSheet.create({
   row: { gap: 12 },
   productBtn: {
     flex: 1,
-    minHeight: 146,
-    borderRadius: 12,
+    minHeight: 150,
+    borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    gap: 8,
+    gap: 9,
     marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -801,22 +905,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
+  productMediaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   addChip: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    zIndex: 2,
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
-  productIconBox: { width: 46, height: 46, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  productImage: { width: 46, height: 46, borderRadius: 11, backgroundColor: "#F1F5F9" },
+  productIconBox: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  productImage: { width: 52, height: 52, borderRadius: 14, backgroundColor: "#F1F5F9" },
   productName: { minHeight: 36, fontSize: 13, lineHeight: 18, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
   productFooter: { marginTop: "auto", gap: 2 },
   productPrice: { fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  productStockPill: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
   productStock: { fontSize: 11, fontFamily: "Inter_500Medium" },
   cartBar: {
     position: "absolute",
@@ -840,16 +942,17 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
   modalSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   cartHeaderActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  closeBtn: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  clearCartBtn: { minHeight: 38, borderRadius: 12, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  closeBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  clearCartBtn: { minHeight: 44, borderRadius: 12, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   clearCartText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700" },
   cartItems: { flex: 1 },
   cartItem: { flexDirection: "row", alignItems: "center", padding: 13, borderRadius: 12, borderWidth: 1, gap: 12, marginBottom: 8 },
   cartItemInfo: { flex: 1, gap: 4 },
   cartItemName: { fontSize: 14, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
-  cartItemPrice: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  cartItemPrice: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  cartItemUnit: { fontSize: 11, fontFamily: "Inter_400Regular" },
   qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
-  qtyBtn: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  qtyBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   qtyText: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700", minWidth: 20, textAlign: "center" },
   modalFooter: { padding: 16, borderTopWidth: 1, gap: 12 },
   totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

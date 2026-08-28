@@ -25,6 +25,8 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: Pro
           style={[styles.btn, { backgroundColor: colors.primary }]}
           onPress={onAction}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
         >
           <Text style={[styles.btnText, { color: colors.primaryForeground }]}>{actionLabel}</Text>
         </TouchableOpacity>
@@ -40,12 +42,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 32,
     gap: 12,
-    paddingVertical: 60,
+    paddingVertical: 48,
   },
   iconBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
@@ -53,10 +55,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', fontFamily: 'Inter_700Bold', textAlign: 'center' },
   subtitle: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
   btn: {
+    minHeight: 48,
     paddingHorizontal: 24,
-    paddingVertical: 12,
     borderRadius: 12,
     marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   btnText: { fontSize: 14, fontWeight: '600', fontFamily: 'Inter_600SemiBold' },
 });
